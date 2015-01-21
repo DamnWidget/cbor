@@ -19,6 +19,7 @@ package cbor
 
 import (
 	"math"
+	"math/big"
 	"reflect"
 	"strconv"
 	"strings"
@@ -121,6 +122,7 @@ const (
 	absolutePositiveBigNum        = 0xc2
 	absoluteNegativeBigNum        = 0xc3
 	absoluteDecimalFraction       = 0xc4
+	absoluteBigFloat              = 0xc5
 	absoluteNoContent             = 0xe0
 )
 
@@ -131,6 +133,7 @@ const (
 	epochDateTime
 	bigNum
 	decimalFraction
+	bigFloat
 )
 
 type float16 float32
@@ -171,9 +174,33 @@ func decimalFractionToFloat(m, e int64) float32 {
 	return float32(float64(m) * be)
 }
 
-// convert a float32 to am exponent and a mantissa
+// convert a float32 to an exponent and a mantissa
 func floatToDecimalFraction(f float32) (int64, int64) {
 	fs := strconv.FormatFloat(float64(f), 'f', -1, 32)
 	l := len(fs) - (strings.Index(fs, ".") + 1)
 	return int64(l), int64(f * float32(math.Pow10(l)))
+}
+
+// convert a mantissa and an exponent into a *big.Rat
+func bigFloatToRatFromInt64(m, e int64) *big.Rat {
+	be := math.Pow(2, float64(e))
+	f := float32(float64(m) * be)
+	r := &big.Rat{}
+	r.SetFloat64(float64(f))
+	return r
+}
+
+// convert a mantissa and an exponent into a *big.Tar from a *big.Int
+func bigFloatToRatFromBigInt(m *big.Int, e int64) *big.Rat {
+	multiplier := big.NewInt(2 * int64(math.Abs(float64(e))))
+	r := &big.Rat{}
+	return r.SetFrac(m, multiplier)
+}
+
+// convert a *big.Rat to an exponent and a mantissa
+func ratToBigFloat(r *big.Rat) (int64, *big.Int) {
+	f, _ := r.Float64()
+	fs := strconv.FormatFloat(f, 'f', -1, 32)
+	l := len(fs) - (strings.Index(fs, ".") + 1)
+	return int64(l), big.NewInt(int64(f * float64(math.Pow(2, float64(l)))))
 }

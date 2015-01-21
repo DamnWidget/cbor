@@ -351,17 +351,13 @@ func (dec *Decoder) decodeFloat64() float64 {
 // RFC3339 with RFC4287 Section 3.3 additions
 func (dec *Decoder) decodeStringDateTime() time.Time {
 	major, info, err := dec.parser.parseInformation()
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkErr(err)
 
 	if major != cborTextString {
 		log.Fatal(fmt.Sprintf("expected UTF-8 string, found %s", info))
 	}
 	t, err := time.Parse(time.RFC3339, dec.decodeString())
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkErr(err)
 	return t
 }
 
@@ -370,9 +366,7 @@ func (dec *Decoder) decodeStringDateTime() time.Time {
 // additional information a time.Time
 func (dec *Decoder) decodeEpochDateTime() time.Time {
 	major, _, err := dec.parser.parseInformation()
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkErr(err)
 	var n int64
 	switch major {
 	case cborUnsignedInt:
@@ -394,30 +388,23 @@ func (dec *Decoder) decodeEpochDateTime() time.Time {
 	return time.Unix(n, int64(0))
 }
 
-// Decode a decimal fraction as defined in
-// Section 2.4.3 of RFC7049
+// Decode a decimal fraction as defined in Section 2.4.3 of RFC7049
 // http://tools.ietf.org/html/rfc7049#section-2.4.3
 func (dec *Decoder) decodeDecimalFraction() float32 {
 	major, _, err := dec.parser.parseInformation()
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkErr(err)
 	if major != cborDataArray {
 		log.Fatal("Decimal Fraction must be represented as an array of two elements")
 	}
 
 	major, _, err = dec.parser.parseInformation()
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkErr(err)
 	if major > cborNegativeInt {
 		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction exponent", major))
 	}
 	e := dec.decodeInt()
 	major, _, err = dec.parser.parseInformation()
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkErr(err)
 	if major > cborNegativeInt {
 		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction mantissa", major))
 	}
@@ -430,15 +417,47 @@ func (dec *Decoder) decodeDecimalFraction() float32 {
 	return decimalFractionToFloat(m, e)
 }
 
+// Decode a big float a defined in Section 2.3.4 of RFC7049
+// http://tools.ietf.org/html/rfc7049#section-2.4.3
+func (dec *Decoder) decodeBigFloat() *big.Rat {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+	if major != cborDataArray {
+		log.Fatal("Decimal Fraction must be represented as an array of two elements")
+	}
+
+	major, _, err = dec.parser.parseInformation()
+	checkErr(err)
+	if major > cborNegativeInt {
+		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction exponent", major))
+	}
+	e := dec.decodeInt()
+	major, info, err := dec.parser.parseInformation()
+	checkErr(err)
+	if major > cborNegativeInt && (major != cborTag && info != cborBigNum) {
+		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction mantissa", major))
+	}
+	switch major {
+	case cborUnsignedInt:
+		m := int64(dec.decodeUint())
+		return bigFloatToRatFromInt64(m, e)
+	case cborNegativeInt:
+		m := int64(dec.decodeInt())
+		return bigFloatToRatFromInt64(m, e)
+	case cborTag:
+		m := dec.decodeBigNum()
+		return bigFloatToRatFromBigInt(m, e)
+	}
+	return big.NewRat(0, 0)
+}
+
 // Decode big num
 func (dec *Decoder) decodeBigNum() *big.Int {
 	major, info, err := dec.parser.parseInformation()
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkErr(err)
 
 	if major != cborByteString {
-		log.Fatal(fmt.Sprintf("expected bytes found %s", info))
+		log.Fatal(fmt.Sprintf("expected bytes found 0x%x", info))
 	}
 	i := new(big.Int)
 	i.SetBytes(dec.decodeBytes())
@@ -454,9 +473,7 @@ func (dec *Decoder) decodeBytes() []byte {
 
 	if info != cborIndefinite {
 		_, d, err := dec.parser.scan(int(dec.parser.buflen()))
-		if err != nil {
-			panic(err)
-		}
+		checkErr(err)
 		return d
 	}
 
@@ -477,9 +494,7 @@ func (dec *Decoder) decodeIndefiniteBytes(buf []byte) []byte {
 		}
 		buflen := int(dec.parser.buflen())
 		n, d, err := dec.parser.scan(buflen)
-		if err != nil {
-			panic(err)
-		}
+		checkErr(err)
 		if n < buflen {
 			panic(fmt.Sprintf("expected %d bytes in buffer, got %d", buflen, n))
 		}
@@ -494,4 +509,11 @@ func (dec *Decoder) decodeIndefiniteBytes(buf []byte) []byte {
 // Decode into a boolean value
 func (dec *Decoder) decodeBool() bool {
 	return dec.parser.parseBool()
+}
+
+// helper function that logs and exists if err is not nil
+func checkErr(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
 }

@@ -68,6 +68,9 @@ func (dec *Decoder) blind() (v interface{}, vk reflect.Kind, err error) {
 	case absoluteDecimalFraction:
 		vk = decimalFraction
 		v = dec.decodeDecimalFraction()
+	case absoluteBigFloat:
+		vk = bigFloat
+		v = dec.decodeBigFloat()
 	default:
 		// unsigned integers
 		if header >= absoluteUint && header < absoluteInt {

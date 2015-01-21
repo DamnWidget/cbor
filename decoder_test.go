@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+
 	"math/big"
 
 	"os"
@@ -835,6 +836,24 @@ func TestDecodeDecimalFraction(t *testing.T) {
 	var a interface{}
 	check(d.Decode(&a))
 	expect(a, float32(273.15), t)
+}
+
+func TestDecodeBigFloat(t *testing.T) {
+	buf := []byte{0xc5, 0x82, 0x20, 0x03}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	check(d.Decode(&a))
+	expect(a.(*big.Rat).String(), big.NewRat(3, 2).String(), t)
+}
+
+func TestDecodeBigFloatFromBigInt(t *testing.T) {
+	buf := []byte{0xc5, 0x82, 0x20, 0xc2, 0x41, 0x03}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	check(d.Decode(&a))
+	expect(a.(*big.Rat).String(), big.NewRat(3, 2).String(), t)
 }
 
 // Some benchmarks
