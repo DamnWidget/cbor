@@ -288,7 +288,7 @@ func (dec *Decoder) decodeUint() uint64 {
 // Decode into an signed int
 // of any size between 8 and 64 bits
 func (dec *Decoder) decodeInt() int64 {
-	return int64(dec.parser.buflen()) * -1
+	return ^int64(dec.parser.buflen())
 }
 
 // Decodes into an unsigned integer of 8 bits
@@ -392,6 +392,42 @@ func (dec *Decoder) decodeEpochDateTime() time.Time {
 		}
 	}
 	return time.Unix(n, int64(0))
+}
+
+// Decode a decimal fraction as defined in
+// Section 2.4.3 of RFC7049
+// http://tools.ietf.org/html/rfc7049#section-2.4.3
+func (dec *Decoder) decodeDecimalFraction() float32 {
+	major, _, err := dec.parser.parseInformation()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if major != cborDataArray {
+		log.Fatal("Decimal Fraction must be represented as an array of two elements")
+	}
+
+	major, _, err = dec.parser.parseInformation()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if major > cborNegativeInt {
+		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction exponent", major))
+	}
+	e := dec.decodeInt()
+	major, _, err = dec.parser.parseInformation()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if major > cborNegativeInt {
+		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction mantissa", major))
+	}
+	var m int64
+	if major == cborUnsignedInt {
+		m = int64(dec.decodeUint())
+	} else {
+		m = dec.decodeInt()
+	}
+	return decimalFractionToFloat(m, e)
 }
 
 // Decode big num

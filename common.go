@@ -18,7 +18,10 @@
 package cbor
 
 import (
+	"math"
 	"reflect"
+	"strconv"
+	"strings"
 	"unsafe"
 )
 
@@ -117,6 +120,7 @@ const (
 	absoluteEpochDateTime         = 0xc1
 	absolutePositiveBigNum        = 0xc2
 	absoluteNegativeBigNum        = 0xc3
+	absoluteDecimalFraction       = 0xc4
 	absoluteNoContent             = 0xe0
 )
 
@@ -126,6 +130,7 @@ const (
 	stringDateTime
 	epochDateTime
 	bigNum
+	decimalFraction
 )
 
 type float16 float32
@@ -158,4 +163,17 @@ func float16toUint32(yy uint16) (d uint32) {
 	e = e + (127 - 15)
 	m = m << 13
 	return (s << 31) | (e << 23) | m
+}
+
+// convert a mantissa and an exponent into a float32
+func decimalFractionToFloat(m, e int64) float32 {
+	be := math.Pow10(int(e))
+	return float32(float64(m) * be)
+}
+
+// convert a float32 to am exponent and a mantissa
+func floatToDecimalFraction(f float32) (int64, int64) {
+	fs := strconv.FormatFloat(float64(f), 'f', -1, 32)
+	l := len(fs) - (strings.Index(fs, ".") + 1)
+	return int64(l), int64(f * float32(math.Pow10(l)))
 }

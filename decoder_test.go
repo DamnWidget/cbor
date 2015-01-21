@@ -823,9 +823,18 @@ func TestDecodeNegativeEpochDateTimeFromInterface(t *testing.T) {
 	expect(a.(time.Time).Day(), 28, t)
 	expect(a.(time.Time).Hour(), 20, t)
 	expect(a.(time.Time).Minute(), 34, t)
-	expect(a.(time.Time).Second(), 13, t)
+	expect(a.(time.Time).Second(), 12, t)
 	expect(a.(time.Time).Nanosecond(), 0, t)
 	expect(a.(time.Time).Location(), time.Local, t)
+}
+
+func TestDecodeDecimalFraction(t *testing.T) {
+	buf := []byte{0xc4, 0x82, 0x21, 0x19, 0x6a, 0xb3}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	check(d.Decode(&a))
+	expect(a, float32(273.15), t)
 }
 
 // Some benchmarks

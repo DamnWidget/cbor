@@ -35,7 +35,7 @@ const (
 )
 
 func (dec *Decoder) decodekInt(rv reflect.Value) error {
-	rv.SetInt(int64(dec.parser.buflen()) * -1)
+	rv.SetInt(^int64(dec.parser.buflen()))
 	return nil
 }
 

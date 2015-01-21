@@ -65,6 +65,9 @@ func (dec *Decoder) blind() (v interface{}, vk reflect.Kind, err error) {
 	case absoluteEpochDateTime:
 		vk = epochDateTime
 		v = dec.decodeEpochDateTime()
+	case absoluteDecimalFraction:
+		vk = decimalFraction
+		v = dec.decodeDecimalFraction()
 	default:
 		// unsigned integers
 		if header >= absoluteUint && header < absoluteInt {
