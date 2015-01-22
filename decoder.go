@@ -117,7 +117,11 @@ func (dec *Decoder) Decode(v interface{}) error {
 	case *float16:
 		*t = dec.decodeFloat16()
 	case *float32:
-		*t = dec.decodeFloat32()
+		if major == cborNC {
+			*t = dec.decodeFloat32()
+		} else {
+			*t = dec.decodeDecimalFraction()
+		}
 	case *float64:
 		*t = dec.decodeFloat64()
 	case *big.Int:
@@ -128,11 +132,17 @@ func (dec *Decoder) Decode(v interface{}) error {
 			*t = *n
 		}
 	case *time.Time:
-		if major == cborTextString {
+		func() {
 			*t = dec.decodeStringDateTime()
-		} else {
-			*t = dec.decodeEpochDateTime()
-		}
+			defer func() {
+				if r := recover(); r != nil {
+					*t = dec.decodeEpochDateTime()
+				}
+			}()
+		}()
+	case *big.Rat:
+		n := dec.decodeBigFloat()
+		*t = *n
 	case *[]byte:
 		*t = dec.decodeBytes()
 	case *string:
@@ -382,7 +392,7 @@ func (dec *Decoder) decodeEpochDateTime() time.Time {
 		case absoluteFloat64:
 			n = int64(int(dec.decodeFloat64()))
 		default:
-			log.Fatal("can't decode Epoch timestamp %#v", dec.parser.header)
+			log.Fatal(fmt.Sprintf("can't decode Epoch timestamp %#v", dec.parser.header))
 		}
 	}
 	return time.Unix(n, int64(0))
