@@ -499,6 +499,17 @@ func (dec *Decoder) decodeBase64Url() []byte {
 	return []byte(base64.URLEncoding.EncodeToString(dec.decodeBytes()))
 }
 
+// Decode a base64 string
+func (dec *Decoder) decodeBase64() []byte {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborByteString {
+		panic(fmt.Errorf("expected bytes found %v", major))
+	}
+	return []byte(base64.StdEncoding.EncodeToString(dec.decodeBytes()))
+}
+
 // Decode into a byte string
 func (dec *Decoder) decodeBytes() []byte {
 	_, info := dec.parser.parseHeader()
