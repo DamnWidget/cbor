@@ -783,19 +783,29 @@ func TestDecodeNegativeBigNumFromInterface(t *testing.T) {
 	expect(fmt.Sprint(a), "-18446744073709551616", t)
 }
 
-func TestDecodeUtf8DAteTime(t *testing.T) {
+func TestDecodeBigNumWrongData(t *testing.T) {
+	buf := []byte{0xc2, 0x29, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	a := new(big.Int)
+	msg := "expected bytes found cborNegativeInt"
+	err := d.Decode(a)
+	expect(err.Error(), msg, t, "TestDecodeBigNumWrongData")
+}
+
+func TestDecodeUtf8DateTime(t *testing.T) {
 	buf := []byte{0xc0, 0x74, 0x32, 0x30, 0x30, 0x33, 0x2d, 0x31, 0x32, 0x2d, 0x31, 0x33, 0x54, 0x31, 0x38, 0x3a, 0x33, 0x30, 0x3a, 0x30, 0x32, 0x5a}
 	r := bytes.NewReader(buf)
 	d := NewDecoder(r)
 	var a time.Time
 	check(d.Decode(&a))
-	expect(a.Year(), 2003, t)
-	expect(a.Month(), time.December, t)
-	expect(a.Day(), 13, t)
-	expect(a.Hour(), 18, t)
-	expect(a.Minute(), 30, t)
-	expect(a.Nanosecond(), 0, t)
-	expect(a.Location(), time.UTC, t)
+	expect(a.Year(), 2003, t, "TestDecodeUtf8DateTime")
+	expect(a.Month(), time.December, t, "TestDecodeUtf8DateTime")
+	expect(a.Day(), 13, t, "TestDecodeUtf8DateTime")
+	expect(a.Hour(), 18, t, "TestDecodeUtf8DateTime")
+	expect(a.Minute(), 30, t, "TestDecodeUtf8DateTime")
+	expect(a.Nanosecond(), 0, t, "TestDecodeUtf8DateTime")
+	expect(a.Location(), time.UTC, t, "TestDecodeUtf8DateTime")
 }
 
 func TestDecodeUtf8DAteTimeFromInterface(t *testing.T) {
@@ -813,6 +823,31 @@ func TestDecodeUtf8DAteTimeFromInterface(t *testing.T) {
 	expect(a.(time.Time).Location(), time.UTC, t)
 }
 
+func TestDecodeUtf8DateTimeWrongMajor(t *testing.T) {
+	buf := []byte{0xc0, 0x54, 0x32, 0x30, 0x30, 0x33, 0x2d, 0x31, 0x32, 0x2d, 0x31, 0x33, 0x54, 0x31, 0x38, 0x3a, 0x33, 0x30, 0x3a, 0x30, 0x32, 0x5a}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	expect(a, nil, t)
+	expect(err.Error(), "expected UTF-8 string, found cborByteString", t)
+}
+
+func TestDecodeEpochDateTime(t *testing.T) {
+	buf := []byte{0xc1, 0x1a, 0x3f, 0xdb, 0x5a, 0xaa}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a time.Time
+	check(d.Decode(&a))
+	expect(a.Year(), 2003, t)
+	expect(a.Month(), time.December, t)
+	expect(a.Day(), 13, t)
+	expect(a.Hour(), 18, t)
+	expect(a.Minute(), 30, t)
+	expect(a.Nanosecond(), 0, t)
+	expect(a.Location(), time.Local, t)
+}
+
 func TestDecodeEpochDateTimeFromInterface(t *testing.T) {
 	buf := []byte{0xc1, 0x1a, 0x3f, 0xdb, 0x5a, 0xaa}
 	r := bytes.NewReader(buf)
@@ -826,6 +861,16 @@ func TestDecodeEpochDateTimeFromInterface(t *testing.T) {
 	expect(a.(time.Time).Minute(), 30, t)
 	expect(a.(time.Time).Nanosecond(), 0, t)
 	expect(a.(time.Time).Location(), time.Local, t)
+}
+
+func TestDecodeEpochDateTimeWrongMajor(t *testing.T) {
+	buf := []byte{0xc1, 0x4a, 0x3f, 0xdb, 0x5a, 0xaa}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	expect(a, nil, t)
+	expect(err.Error(), "can't decode Epoch timestamp cborByteString", t)
 }
 
 func TestDecodeNegativeEpochDateTimeFromInterface(t *testing.T) {
@@ -850,7 +895,40 @@ func TestDecodeDecimalFraction(t *testing.T) {
 	d := NewDecoder(r)
 	var a interface{}
 	check(d.Decode(&a))
-	expect(a, float32(273.15), t)
+	expect(a, float32(273.15), t, "TestDecodeDecimalFraction")
+}
+
+func TestDecodeDecimalFractionNonArray(t *testing.T) {
+	buf := []byte{0xc4, 0xa2, 0x21, 0x19, 0x6a, 0xb3}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	msg := "Decimal Fraction must be represented as an array of two elements"
+	expect(a, nil, t, "TestDecodeCecimalFractionNonArray")
+	expect(err.Error(), msg, t, "TestDecodeDecimalFractionNonArray")
+}
+
+func TestDecodeDecimalFractionInvalidExponent(t *testing.T) {
+	buf := []byte{0xc4, 0x82, 0x51, 0x19, 0x6a, 0xb3}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	msg := "Can't decode cborByteString as decimal fraction exponent"
+	expect(a, nil, t, "TestDecodeDecimalFractionInvalidExponent")
+	expect(err.Error(), msg, t, "TestDecodeDecimalFractionInvalidExponent")
+}
+
+func TestDecodeDecimalFractionInvalidMantissa(t *testing.T) {
+	buf := []byte{0xc4, 0x82, 0x21, 0x59, 0x6a, 0xb3}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	msg := "Can't decode cborByteString as decimal fraction mantissa"
+	expect(a, nil, t, "TestDecodeDecimalFractionInvalidMantissa")
+	expect(err.Error(), msg, t, "TestDecodeDecimalFractionInvalidMantissa")
 }
 
 func TestDecodeBigFloat(t *testing.T) {
@@ -869,6 +947,51 @@ func TestDecodeBigFloatFromBigInt(t *testing.T) {
 	var a interface{}
 	check(d.Decode(&a))
 	expect(a.(*big.Rat).String(), big.NewRat(3, 2).String(), t)
+}
+
+func TestDecodeBigFloatNonArray(t *testing.T) {
+	buf := []byte{0xc5, 0x52, 0x20, 0x03}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	msg := "Big float must be represented as an array of two elements"
+	expect(a, nil, t, "TestDecodeBigFloatNonArray")
+	expect(err.Error(), msg, t, "TestDecodeBigFloatNonArray")
+}
+
+func TestDecodeBigFloatInvalidExponent(t *testing.T) {
+	buf := []byte{0xc5, 0x82, 0x50, 0x03}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	msg := "Can't decode cborByteString as decimal fraction exponent"
+	expect(a, nil, t, "TestDecodeBigFloatInvalidExponent")
+	expect(err.Error(), msg, t, "TestDecodeBigFloatInvalidExponent")
+}
+
+func TestDecodeBigFloatInvalidMantissa(t *testing.T) {
+	buf := []byte{0xc5, 0x82, 0x20, 0x53}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	err := d.Decode(&a)
+	msg := "Can't decode cborByteString as decimal fraction mantissa"
+	expect(a, nil, t, "TestDecodeBigFloatInvalidMantissa")
+	expect(err.Error(), msg, t, "TestDecodeBigFloatInvalidMantissa")
+}
+
+func TestDecodeBase64Url(t *testing.T) {
+	buf := []byte{0xd5, 0x4f, 0x43, 0x42, 0x4f, 0x52, 0x20, 0x69, 0x73, 0x20, 0x61, 0x77, 0x65, 0x73, 0x6f, 0x6d, 0x65}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+	check(d.Decode(&a))
+	e := []byte{0x51, 0x30, 0x4a, 0x50, 0x55, 0x69, 0x42, 0x70, 0x63, 0x79, 0x42, 0x68, 0x64, 0x32, 0x56, 0x7a, 0x62, 0x32, 0x31, 0x6c}
+	for i, _ := range e {
+		expect(a.([]byte)[i], e[i], t, "TestDecodeBase64Url")
+	}
 }
 
 // Some benchmarks

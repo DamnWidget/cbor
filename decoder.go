@@ -16,10 +16,10 @@
 package cbor
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"reflect"
 	"time"
@@ -87,12 +87,20 @@ func NewDecoder(r io.Reader, options ...func(*Decoder)) *Decoder {
 // Decode reads the next CBOR-encoded value from its
 // input and stores it in the value pointed to by v.
 // It also checks for the well-formedness of the 'data item'
-func (dec *Decoder) Decode(v interface{}) error {
-	major, info, err := dec.parser.parseInformation()
+func (dec *Decoder) Decode(v interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = r.(error)
+		}
+	}()
+
+	var info byte
+	var major Major
+	major, info, err = dec.parser.parseInformation()
 	if err != nil {
 		return err
 	}
-	if err := dec.checkTypes(reflect.TypeOf(v), major, info); err != nil {
+	if err = dec.checkTypes(reflect.TypeOf(v), major, info); err != nil {
 		return err
 	}
 	switch t := v.(type) {
@@ -133,12 +141,12 @@ func (dec *Decoder) Decode(v interface{}) error {
 		}
 	case *time.Time:
 		func() {
-			*t = dec.decodeStringDateTime()
 			defer func() {
 				if r := recover(); r != nil {
-					*t = dec.decodeEpochDateTime()
+					*t = dec.decodeEpochDateTime(struct{}{})
 				}
 			}()
+			*t = dec.decodeStringDateTime()
 		}()
 	case *big.Rat:
 		n := dec.decodeBigFloat()
@@ -161,7 +169,7 @@ func (dec *Decoder) Decode(v interface{}) error {
 		return &InvalidDecodeError{rv.Type()}
 	}
 
-	return nil
+	return err
 }
 
 // decode is being used when the type of the receiver of the decode
@@ -360,11 +368,11 @@ func (dec *Decoder) decodeFloat64() float64 {
 // that follows the standard format defined in
 // RFC3339 with RFC4287 Section 3.3 additions
 func (dec *Decoder) decodeStringDateTime() time.Time {
-	major, info, err := dec.parser.parseInformation()
+	major, _, err := dec.parser.parseInformation()
 	checkErr(err)
 
 	if major != cborTextString {
-		log.Fatal(fmt.Sprintf("expected UTF-8 string, found %s", info))
+		panic(fmt.Errorf("expected UTF-8 string, found %v", major))
 	}
 	t, err := time.Parse(time.RFC3339, dec.decodeString())
 	checkErr(err)
@@ -374,9 +382,15 @@ func (dec *Decoder) decodeStringDateTime() time.Time {
 // Decode a positive or negative
 // integer or floating point with
 // additional information a time.Time
-func (dec *Decoder) decodeEpochDateTime() time.Time {
-	major, _, err := dec.parser.parseInformation()
-	checkErr(err)
+func (dec *Decoder) decodeEpochDateTime(parseInforamtion ...struct{}) time.Time {
+	var err error
+	var major Major
+	if len(parseInforamtion) == 0 {
+		major, _, err = dec.parser.parseInformation()
+		checkErr(err)
+	} else {
+		major, _ = dec.parser.parseHeader()
+	}
 	var n int64
 	switch major {
 	case cborUnsignedInt:
@@ -392,7 +406,7 @@ func (dec *Decoder) decodeEpochDateTime() time.Time {
 		case absoluteFloat64:
 			n = int64(int(dec.decodeFloat64()))
 		default:
-			log.Fatal(fmt.Sprintf("can't decode Epoch timestamp %#v", dec.parser.header))
+			panic(fmt.Errorf("can't decode Epoch timestamp %v", major))
 		}
 	}
 	return time.Unix(n, int64(0))
@@ -404,19 +418,19 @@ func (dec *Decoder) decodeDecimalFraction() float32 {
 	major, _, err := dec.parser.parseInformation()
 	checkErr(err)
 	if major != cborDataArray {
-		log.Fatal("Decimal Fraction must be represented as an array of two elements")
+		panic(fmt.Errorf("Decimal Fraction must be represented as an array of two elements"))
 	}
 
 	major, _, err = dec.parser.parseInformation()
 	checkErr(err)
 	if major > cborNegativeInt {
-		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction exponent", major))
+		panic(fmt.Errorf("Can't decode %s as decimal fraction exponent", major))
 	}
 	e := dec.decodeInt()
 	major, _, err = dec.parser.parseInformation()
 	checkErr(err)
 	if major > cborNegativeInt {
-		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction mantissa", major))
+		panic(fmt.Errorf("Can't decode %s as decimal fraction mantissa", major))
 	}
 	var m int64
 	if major == cborUnsignedInt {
@@ -433,19 +447,19 @@ func (dec *Decoder) decodeBigFloat() *big.Rat {
 	major, _, err := dec.parser.parseInformation()
 	checkErr(err)
 	if major != cborDataArray {
-		log.Fatal("Decimal Fraction must be represented as an array of two elements")
+		panic("Big float must be represented as an array of two elements")
 	}
 
 	major, _, err = dec.parser.parseInformation()
 	checkErr(err)
 	if major > cborNegativeInt {
-		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction exponent", major))
+		panic(fmt.Errorf("Can't decode %s as decimal fraction exponent", major))
 	}
 	e := dec.decodeInt()
 	major, info, err := dec.parser.parseInformation()
 	checkErr(err)
 	if major > cborNegativeInt && (major != cborTag && info != cborBigNum) {
-		log.Fatal(fmt.Sprintf("Can't decode %s as decimal fraction mantissa", major))
+		panic(fmt.Errorf("Can't decode %s as decimal fraction mantissa", major))
 	}
 	switch major {
 	case cborUnsignedInt:
@@ -463,15 +477,26 @@ func (dec *Decoder) decodeBigFloat() *big.Rat {
 
 // Decode big num
 func (dec *Decoder) decodeBigNum() *big.Int {
-	major, info, err := dec.parser.parseInformation()
+	major, _, err := dec.parser.parseInformation()
 	checkErr(err)
 
 	if major != cborByteString {
-		log.Fatal(fmt.Sprintf("expected bytes found 0x%x", info))
+		panic(fmt.Errorf("expected bytes found %v", major))
 	}
 	i := new(big.Int)
 	i.SetBytes(dec.decodeBytes())
 	return i
+}
+
+// Decode a base64 url
+func (dec *Decoder) decodeBase64Url() []byte {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborByteString {
+		panic(fmt.Errorf("expected bytes found %v", major))
+	}
+	return []byte(base64.URLEncoding.EncodeToString(dec.decodeBytes()))
 }
 
 // Decode into a byte string
@@ -506,7 +531,7 @@ func (dec *Decoder) decodeIndefiniteBytes(buf []byte) []byte {
 		n, d, err := dec.parser.scan(buflen)
 		checkErr(err)
 		if n < buflen {
-			panic(fmt.Sprintf("expected %d bytes in buffer, got %d", buflen, n))
+			panic(fmt.Errorf("expected %d bytes in buffer, got %d", buflen, n))
 		}
 		buf = append(buf, d...)
 		if _, _, err := dec.parser.parseInformation(); err != nil {
@@ -521,9 +546,9 @@ func (dec *Decoder) decodeBool() bool {
 	return dec.parser.parseBool()
 }
 
-// helper function that logs and exists if err is not nil
+// helper function that panics if err is not nil
 func checkErr(err error) {
 	if err != nil {
-		log.Fatal(err)
+		panic(err.Error())
 	}
 }

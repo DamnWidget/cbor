@@ -123,6 +123,7 @@ const (
 	absoluteNegativeBigNum        = 0xc3
 	absoluteDecimalFraction       = 0xc4
 	absoluteBigFloat              = 0xc5
+	absoluteBase64Url             = 0xd5
 	absoluteNoContent             = 0xe0
 )
 
@@ -134,6 +135,7 @@ const (
 	bigNum
 	decimalFraction
 	bigFloat
+	base64Url
 )
 
 type float16 float32

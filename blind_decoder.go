@@ -71,6 +71,9 @@ func (dec *Decoder) blind() (v interface{}, vk reflect.Kind, err error) {
 	case absoluteBigFloat:
 		vk = bigFloat
 		v = dec.decodeBigFloat()
+	case absoluteBase64Url:
+		vk = base64Url
+		v = dec.decodeBase64Url()
 	default:
 		// unsigned integers
 		if header >= absoluteUint && header < absoluteInt {
