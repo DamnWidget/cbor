@@ -235,9 +235,9 @@ func (dec *Decoder) decodekMap(rv reflect.Value) error {
 // is to use odds indexes as keys and even indexes as value as
 // it was a map
 //
-// So the first value read from the CBOR data will be mapped
-// into the `Name` field, the second into the Age field using
-// their types.
+// So in the example below, the first value read from the CBOR
+// data will be mapped into the `Name` field, the second into
+// the Age field using their types.
 //
 // Tags can be used with maps as well in case that the keys
 // names doesn't match with out struct fields names,
@@ -246,7 +246,7 @@ func (dec *Decoder) decodekMap(rv reflect.Value) error {
 //			Age  uint8	`cbor:"how_old"`
 //		}
 //
-// Is the Strict Mode is used, will also fail if it receives a
+// If the Strict Mode is used, will also fail if it receives a
 // key that doesn't match with any field of the struct or if
 // there are more indexes than fields in the struct
 // Note: that last behavior is not part of the RFC7049

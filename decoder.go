@@ -21,35 +21,36 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"mime"
+	"net/url"
 	"reflect"
+	"regexp"
 	"time"
 )
 
 // Type of function that handles decoding of extensions
 type handleDecFn func(*Decoder, reflect.Value) error
 
-// tag maps, used by user code to register custom extensions
-// using the major type 6 Optional Semantic Tagging for more
-// information refer to http://tools.ietf.org/html/rfc7049#section-2.4
-type extensionTagDecMap map[uintptr]handleDecFn
+// additional types map defined by the user
+type extensionDecMap map[uintptr]handleDecFn
 
 // global extensions register
-var tagExtensionsDec extensionTagDecMap
+var extensionsDec extensionDecMap = make(extensionDecMap)
 
-// Registers a new extension in the extensions tags register
-func (e *extensionTagDecMap) register(t reflect.Type, fn handleDecFn) error {
+// Registers a new extension in the extensions custom types register
+func (e *extensionDecMap) register(t reflect.Type, fn handleDecFn) error {
 	tid := reflect.ValueOf(t).Pointer()
-	if _, ok := tagExtensionsDec[tid]; ok {
-		return errors.New(fmt.Sprintf("%s type is already registered\n", t))
+	if _, ok := extensionsDec[tid]; ok {
+		return fmt.Errorf("%s type is already registered\n", t)
 	}
-	tagExtensionsDec[tid] = fn
+	extensionsDec[tid] = fn
 	return nil
 }
 
 // Look for a function registered to handle a given type
-func (e *extensionTagDecMap) lookup(t reflect.Type) (handleDecFn, error) {
+func (e *extensionDecMap) lookup(t reflect.Type) (handleDecFn, error) {
 	tid := reflect.ValueOf(t).Pointer()
-	fn, ok := tagExtensionsDec[tid]
+	fn, ok := extensionsDec[tid]
 	if !ok {
 		return nil, errors.New(fmt.Sprintf(
 			"%s not matched as registered extension handler", t))
@@ -59,12 +60,12 @@ func (e *extensionTagDecMap) lookup(t reflect.Type) (handleDecFn, error) {
 
 // Registers a new function to hanle decode of extensions
 func RegisterExtensionFn(t reflect.Type, fn handleDecFn) error {
-	return tagExtensionsDec.register(t, fn)
+	return extensionsDec.register(t, fn)
 }
 
 // Lookup for a registered function that handles the given type decode
 func LookupExtensionFn(t reflect.Type) (handleDecFn, error) {
-	return tagExtensionsDec.lookup(t)
+	return extensionsDec.lookup(t)
 }
 
 // A Decoder reads and decode CBOR objects from an input stream.
@@ -493,8 +494,8 @@ func (dec *Decoder) decodeBase64Url() []byte {
 	major, _, err := dec.parser.parseInformation()
 	checkErr(err)
 
-	if major != cborByteString {
-		panic(fmt.Errorf("expected bytes found %v", major))
+	if major != cborByteString && major != cborTextString {
+		panic(fmt.Errorf("expected string or bytes found %v", major))
 	}
 	data := dec.decodeBytes()
 	var buf []byte = make([]byte, base64.URLEncoding.EncodedLen(len(data)))
@@ -507,13 +508,106 @@ func (dec *Decoder) decodeBase64() []byte {
 	major, _, err := dec.parser.parseInformation()
 	checkErr(err)
 
-	if major != cborByteString {
-		panic(fmt.Errorf("expected bytes found %v", major))
+	if major != cborByteString && major != cborTextString {
+		panic(fmt.Errorf("expected string or bytes found %v", major))
 	}
 	data := dec.decodeBytes()
 	var buf []byte = make([]byte, base64.StdEncoding.EncodedLen(len(data)))
 	base64.StdEncoding.Encode(buf, data)
 	return buf
+}
+
+// Decode a base16 string
+func (dec *Decoder) decodeBase16() []byte {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborByteString && major != cborTextString {
+		panic(fmt.Errorf("expected string or bytes found %v", major))
+	}
+	data := dec.decodeBytes()
+	return []byte(fmt.Sprintf("%x", data))
+}
+
+// Read the following byte string as raw bytes data
+func (dec *Decoder) decodeDataItem() []byte {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborByteString {
+		panic(fmt.Errorf("expected bytes found %v", major))
+	}
+	return dec.decodeBytes()
+}
+
+// Decode a UTF8 URI
+func (dec *Decoder) decodeURI() *url.URL {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborTextString {
+		panic(fmt.Errorf("expected string found %v", major))
+	}
+	uri, err := url.Parse(dec.decodeString())
+	checkErr(err)
+	return uri
+}
+
+// Decode a UTF8 base64 encoded URI
+func (dec *Decoder) decodeBase64URI() *url.URL {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborTextString {
+		panic(fmt.Errorf("expected string found %v", major))
+	}
+	decodedUrl, err := base64.URLEncoding.DecodeString(dec.decodeString())
+	checkErr(err)
+	uri, err := url.Parse(string(decodedUrl))
+	checkErr(err)
+	return uri
+}
+
+// Decode a UTF8 base64 encoded string
+func (dec *Decoder) decodeBase64String() string {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborTextString {
+		panic(fmt.Errorf("expected string found %v", major))
+	}
+	decodedBytes, err := base64.StdEncoding.DecodeString(dec.decodeString())
+	checkErr(err)
+	return string(decodedBytes)
+}
+
+// Decode an UTF8 Regular Expression
+func (dec *Decoder) decodeRegexp() *regexp.Regexp {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborTextString {
+		panic(fmt.Errorf("expected string found %v", major))
+	}
+	re, err := regexp.Compile(dec.decodeString())
+	checkErr(err)
+	return re
+}
+
+// Decode a UTF8 MIME Message
+func (dec *Decoder) decodeMime() *CBORMIME {
+	var mediatype string
+	var params map[string]string
+
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborTextString {
+		panic(fmt.Errorf("expected string found %v", major))
+	}
+	mediatype, params, err = mime.ParseMediaType(dec.decodeString())
+	checkErr(err)
+	return &CBORMIME{mediatype, params}
 }
 
 // Decode into a byte string

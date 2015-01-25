@@ -105,6 +105,7 @@ const (
 	absoluteFloat64
 )
 
+// absolute headers
 const (
 	absoluteIndefiniteBytes  byte = 0x5f
 	absoluteIndefiniteString      = 0x7f
@@ -125,6 +126,7 @@ const (
 	absoluteBigFloat              = 0xc5
 	absoluteBase64Url             = 0xd5
 	absoluteBase64String          = 0xd6
+	absoluteBase16String          = 0xd7
 	absoluteNoContent             = 0xe0
 )
 
@@ -138,7 +140,18 @@ const (
 	bigFloat
 	base64Url
 	base64String
+	base16String
+	encodedDataItem
+	URI
+	tagRegexp
+	MIME
 )
+
+// CBORMIME
+type CBORMIME struct {
+	ContentType string
+	Params      map[string]string
+}
 
 type float16 float32
 

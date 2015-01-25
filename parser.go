@@ -96,9 +96,6 @@ func (p *Parser) parseInformation() (major Major, info byte, err error) {
 		p.indefinite = true
 		return major, infotype, nil
 	}
-	if major == cborTag {
-		return p.parseTagInformation(infotype)
-	}
 	if (infotype >= 28 && infotype <= 30) || infotype > 31 {
 		return major, info, NewParseErr(
 			fmt.Sprintf("invalid additional info %d", infotype))
@@ -106,11 +103,6 @@ func (p *Parser) parseInformation() (major Major, info byte, err error) {
 	bytes := 1 << uint(3-(0x1b-uint(infotype)))
 	_, p.buf, err = p.scan(bytes)
 	return major, infotype, err
-}
-
-// TODO: Parses tag information
-func (p *Parser) parseTagInformation(infotype byte) (major Major, info byte, err error) {
-	return major, info, nil
 }
 
 // Parses the header returning back major and additional information

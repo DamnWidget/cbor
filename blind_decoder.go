@@ -21,6 +21,42 @@ import (
 	"reflect"
 )
 
+// function used to decode extended tag info
+type handleTagDecFn func(*Decoder, interface{}) error
+
+// tag maps, used by user code to register custom extensions
+// using the major type 6 Optional Semantic Tagging for more
+// information refer to http://tools.ietf.org/html/rfc7049#section-2.4
+type extensionTagMap map[uint64]handleTagDecFn
+
+// global extension tags map
+var extensionTagDec extensionTagMap = make(extensionTagMap)
+
+// register a new extension information tag in the tags register
+func (e *extensionTagMap) register(tagInfo uint64, fn handleTagDecFn) error {
+	if _, ok := extensionTagDec[tagInfo]; ok {
+		return fmt.Errorf("0x%x tag information is already registered", tagInfo)
+	}
+	extensionTagDec[tagInfo] = fn
+	return nil
+}
+
+// Look for a function registered to handle a given tag info
+func (e *extensionTagMap) lookup(tagInfo uint64) (handleTagDecFn, error) {
+	fn, ok := extensionTagDec[tagInfo]
+	if !ok {
+		return nil, fmt.Errorf(
+			"0x%x not matched as registered tag extension handler", tagInfo)
+	}
+	return fn, nil
+}
+
+// Registers a new funtion to handle decode of tag extensions
+func RegisterTagExtensionFn(tagInfo uint64, fn handleTagDecFn) error {
+	return extensionTagDec.register(tagInfo, fn)
+}
+
+// decodes into v scanning the CBOR data that comes in the encoded data
 func (dec *Decoder) blind() (v interface{}, vk reflect.Kind, err error) {
 	header := dec.parser.header
 	info := header & 0x1f
@@ -77,6 +113,9 @@ func (dec *Decoder) blind() (v interface{}, vk reflect.Kind, err error) {
 	case absoluteBase64String:
 		vk = base64String
 		v = dec.decodeBase64()
+	case absoluteBase16String:
+		vk = base16String
+		v = dec.decodeBase16()
 	default:
 		// unsigned integers
 		if header >= absoluteUint && header < absoluteInt {
@@ -142,7 +181,35 @@ func (dec *Decoder) blind() (v interface{}, vk reflect.Kind, err error) {
 		}
 		// tags
 		if header >= absoluteTag && header < absoluteNoContent {
-			vk = reflect.Ptr
+			tagInfo := dec.parser.buflen()
+			switch tagInfo {
+			case cborURI:
+				vk = URI
+				v = dec.decodeURI()
+			case cborTextBase64Url:
+				vk = URI
+				v = dec.decodeBase64URI()
+			case cborTextBase64:
+				vk = reflect.String
+				v = dec.decodeBase64String()
+			case cborRegexp:
+				vk = tagRegexp
+				v = dec.decodeRegexp()
+			case cborMime:
+				vk = MIME
+				v = dec.decodeMime()
+			default:
+				// lookup in the extended user defined tags
+				fn, err := extensionTagDec.lookup(tagInfo)
+				if err == nil {
+					vk = reflect.Invalid
+					if err := fn(dec, v); err != nil {
+						return nil, 0, err
+					}
+				} else {
+					vk = reflect.Ptr
+				}
+			}
 		}
 	}
 
