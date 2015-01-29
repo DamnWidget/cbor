@@ -42,17 +42,17 @@ func TestDecodeUint8(t *testing.T) {
 	d := NewDecoder(r)
 	var a uint8
 	check(d.Decode(&a))
-	expect(uint8(111), a, t)
+	expect(uint8(111), a, t, "TestDecodeUint8")
 
 	buf = []byte{0x38, 0x6f}
 	r = bytes.NewReader(buf)
 	d = NewDecoder(r)
-	expect(d.Decode(&a) != nil, true, t)
+	expect(d.Decode(&a) != nil, true, t, "TestDecodeUint8")
 
 	buf = []byte{0x19, 0x6f, 0x00}
 	r = bytes.NewReader(buf)
 	d = NewDecoder(r)
-	expect(d.Decode(&a) != nil, true, t)
+	expect(d.Decode(&a) != nil, true, t, "TestDecodeUint8")
 }
 
 func TestDecodeInt8(t *testing.T) {

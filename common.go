@@ -70,6 +70,11 @@ const (
 	cborFloat64
 )
 
+// Big nums
+const (
+	cborPositiveBigNum byte = 0xc2
+)
+
 // Additional tags on RFC7049
 const (
 	cborTextDateTime  byte = 0x00

@@ -49,3 +49,17 @@ func NewStrictModeError(msg string) *StrictModeError {
 func (e *StrictModeError) Error() string {
 	return e.Msg
 }
+
+// A CanonicalModeError describes an invalid operation that violates
+// the section 3.9. Canonical CBOR definition of the RFC7049
+type CanonicalModeError struct {
+	Msg string
+}
+
+func NewCanonicalModeError(msg string) *CanonicalModeError {
+	return &CanonicalModeError{Msg: fmt.Sprintf("canonical-mode: %s", msg)}
+}
+
+func (e *CanonicalModeError) Error() string {
+	return e.Msg
+}
