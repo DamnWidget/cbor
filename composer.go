@@ -69,33 +69,37 @@ func (c *Composer) write1(b byte) error {
 }
 
 // Handle unsigned integers writing
-func (c *Composer) composeUint(i uint64) (n int, err error) {
+func (c *Composer) composeUint(i uint64, infoType ...Major) (n int, err error) {
+	var t Major = cborUnsignedInt
+	if len(infoType) > 0 {
+		t = infoType[0]
+	}
 	if i < 24 {
-		if err := c.composeInformation(cborUnsignedInt, byte(i)); err != nil {
+		if err := c.composeInformation(t, byte(i)); err != nil {
 			return 0, err
 		}
 		return 1, nil
 	}
 	if i <= math.MaxUint8 {
-		if err := c.composeInformation(cborUnsignedInt, cborUint8); err != nil {
+		if err := c.composeInformation(t, cborUint8); err != nil {
 			return 0, err
 		}
 		return c.composeUint8(byte(i))
 	}
 	if i <= math.MaxUint16 {
-		if err := c.composeInformation(cborUnsignedInt, cborUint16); err != nil {
+		if err := c.composeInformation(t, cborUint16); err != nil {
 			return 0, err
 		}
 		return c.composeUint16(uint16(i))
 	}
 	if i <= math.MaxUint32 {
-		if err := c.composeInformation(cborUnsignedInt, cborUint32); err != nil {
+		if err := c.composeInformation(t, cborUint32); err != nil {
 			return 0, err
 		}
 		return c.composeUint32(uint32(i))
 	}
 	if i <= math.MaxUint64 {
-		if err := c.composeInformation(cborUnsignedInt, cborUint64); err != nil {
+		if err := c.composeInformation(t, cborUint64); err != nil {
 			return 0, err
 		}
 		return c.composeUin64(i)
@@ -106,7 +110,7 @@ func (c *Composer) composeUint(i uint64) (n int, err error) {
 // Handle signed integers writing
 func (c *Composer) composeInt(i int64) (n int, err error) {
 	if i < 0 {
-		return c.composeUint(uint64(^i))
+		return c.composeUint(uint64(^i), cborUnsignedInt)
 	}
 	return c.composeUint(uint64(i))
 }
@@ -126,7 +130,7 @@ func (c *Composer) composeUint8(b uint8) (int, error) {
 // Write two bytes into the io.Writer
 // as an encoded CBOR unsigned int of 16 bits
 func (c *Composer) composeUint16(i uint16) (int, error) {
-	if err := binary.Write(c.w, binary.LittleEndian, i); err != nil {
+	if err := binary.Write(c.w, binary.BigEndian, i); err != nil {
 		return 0, err
 	}
 	return 2, nil
@@ -135,7 +139,7 @@ func (c *Composer) composeUint16(i uint16) (int, error) {
 // Write two bytes into the io.Writer
 // as an encoded CBOR unsigned int of 32 bits
 func (c *Composer) composeUint32(i uint32) (int, error) {
-	if err := binary.Write(c.w, binary.LittleEndian, i); err != nil {
+	if err := binary.Write(c.w, binary.BigEndian, i); err != nil {
 		return 0, err
 	}
 	return 4, nil
@@ -144,7 +148,7 @@ func (c *Composer) composeUint32(i uint32) (int, error) {
 // Write two bytes into the io.Writer
 // as an encoded CBOR unsigned int of 64 bits
 func (c *Composer) composeUin64(i uint64) (int, error) {
-	if err := binary.Write(c.w, binary.LittleEndian, i); err != nil {
+	if err := binary.Write(c.w, binary.BigEndian, i); err != nil {
 		return 0, err
 	}
 	return 8, nil

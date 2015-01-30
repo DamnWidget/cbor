@@ -35,3 +35,22 @@ func TestWrite(t *testing.T) {
 		expect(elem, b[i], t, "TestWrite")
 	}
 }
+
+func TestComposeInt(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	c := NewComposer(buf)
+	var i int64 = 1936
+	n, err := c.composeInt(i)
+	check(err)
+	expect(n, 2, t, "TestComposeInt")
+	expect(buf.Bytes()[0], byte(0x19), t, "TestComposeInt")
+	expect(buf.Bytes()[1], byte(0x07), t, "TestComposeInt")
+	expect(buf.Bytes()[2], byte(0x90), t, "TestComposeInt")
+	buf.Reset()
+	i = 56
+	n, err = c.composeInt(i)
+	check(err)
+	expect(n, 1, t, "TestComposeInt")
+	expect(buf.Bytes()[0], byte(0x18), t, "TestComposeInt")
+	expect(int8(buf.Bytes()[1]), int8(56), t, "TestComposeInt")
+}
