@@ -190,6 +190,36 @@ func float16toUint32(yy uint16) (d uint32) {
 	return (s << 31) | (e << 23) | m
 }
 
+func uint32toFloat16(i uint32) uint16 {
+	s := (i >> 16) & 0x00008000
+	e := ((i >> 23) & 0x000000ff) - (127 - 15)
+	m := i & 0x007fffff
+
+	if e <= 0 {
+		if int(e) < -10 {
+			return 0
+		}
+		m = (m | 0x00800000) >> uint32(1-e)
+		return uint16(s | (m >> 13))
+	} else if e == 0xff-(127-15) {
+		if m == 0 { // Inf
+			return uint16(s | 0x7c00)
+		} else { // NaN
+			m >>= 13
+			t := uint32(0)
+			if m == 0 {
+				t = 1
+			}
+			return uint16(s | 0x7c00 | m | t)
+		}
+	} else {
+		if e > 30 { // Overflow
+			return uint16(s | 0x7c00)
+		}
+		return uint16(s | (e << 10) | (m >> 13))
+	}
+}
+
 // convert a mantissa and an exponent into a float32
 func decimalFractionToFloat(m, e int64) float32 {
 	be := math.Pow10(int(e))
@@ -212,17 +242,9 @@ func bigFloatToRatFromInt64(m, e int64) *big.Rat {
 	return r
 }
 
-// convert a mantissa and an exponent into a *big.Tar from a *big.Int
+// convert a mantissa and an exponent into a *big.Rat from a *big.Int
 func bigFloatToRatFromBigInt(m *big.Int, e int64) *big.Rat {
 	multiplier := big.NewInt(2 * int64(math.Abs(float64(e))))
 	r := &big.Rat{}
 	return r.SetFrac(m, multiplier)
-}
-
-// convert a *big.Rat to an exponent and a mantissa
-func ratToBigFloat(r *big.Rat) (int64, *big.Int) {
-	f, _ := r.Float64()
-	fs := strconv.FormatFloat(f, 'f', -1, 32)
-	l := len(fs) - (strings.Index(fs, ".") + 1)
-	return int64(l), big.NewInt(int64(f * float64(math.Pow(2, float64(l)))))
 }

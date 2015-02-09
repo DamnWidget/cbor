@@ -25,7 +25,7 @@ type CurrentResult interface{}
 type ExpectedResult interface{}
 
 // convenience function for simple assertions
-func expect(expected ExpectedResult, got CurrentResult, t *testing.T, from ...string) {
+func expect(got CurrentResult, expected ExpectedResult, t *testing.T, from ...string) {
 	f := "TestTake"
 	if len(from) > 0 {
 		f = from[0]
