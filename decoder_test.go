@@ -195,6 +195,13 @@ func TestDecodeFloat16(t *testing.T) {
 	var a float16
 	check(d.Decode(&a))
 	expect(float16(1.96875), a, t)
+
+	buf = []byte{0xf9, 0x3c, 0x00}
+	r = bytes.NewReader(buf)
+	d = NewDecoder(r)
+	check(d.Decode(&a))
+	expect(float16(1.0), a, t)
+
 }
 
 func TestDecodeFloat32(t *testing.T) {
@@ -773,7 +780,7 @@ func TestDecodeNegativeBigNum(t *testing.T) {
 	d := NewDecoder(r)
 	a := big.NewInt(-1)
 	check(d.Decode(a))
-	expect(fmt.Sprint(a), "-18446744073709551616", t)
+	expect(fmt.Sprint(a), "-18446744073709551617", t)
 }
 
 func TestDecodeNegativeBigNumFromInterface(t *testing.T) {
@@ -782,7 +789,7 @@ func TestDecodeNegativeBigNumFromInterface(t *testing.T) {
 	d := NewDecoder(r)
 	var a interface{}
 	check(d.Decode(&a))
-	expect(fmt.Sprint(a), "-18446744073709551616", t)
+	expect(fmt.Sprint(a), "-18446744073709551617", t)
 }
 
 func TestDecodeBigNumWrongData(t *testing.T) {
@@ -1159,115 +1166,126 @@ func TestRegisterTagExtensionFn(t *testing.T) {
 
 // Some benchmarks
 func BenchmarkDecodeUint8(b *testing.B) {
+	buf := []byte{0x18, 0x6f}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a uint8
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0x18, 0x6f}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a uint8
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeFLoat16(b *testing.B) {
+	buf := []byte{0xf9, 0x3f, 0xe0}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a float16
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0xf9, 0x3f, 0xe0}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a float16
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeFLoat32(b *testing.B) {
+	buf := []byte{0xfa, 0x3f, 0x66, 0x66, 0x66}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a float32
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0xfa, 0x3f, 0x66, 0x66, 0x66}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a float32
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeUnsignedIntsIndefiniteArray(b *testing.B) {
+	buf := []byte{0x9f, 0x04, 0x09, 0x19, 0x04, 0x00, 0x10, 0xff}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a []uint
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0x9f, 0x04, 0x09, 0x19, 0x04, 0x00, 0x10, 0xff}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a []uint
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeUnsignedIntsArray(b *testing.B) {
+	buf := []byte{0x84, 0x04, 0x09, 0x19, 0x04, 0x00, 0x10}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a []uint
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0x84, 0x04, 0x09, 0x19, 0x04, 0x00, 0x10}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a []uint
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeInterface(b *testing.B) {
+	buf := []byte{0x85, 0x04, 0x09, 0x19, 0x04, 0x00, 0x10, 0x83, 0x01, 0x02, 0x67, 0x65, 0x73, 0x70, 0x61, 0xc3, 0xb1, 0x61}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0x85, 0x04, 0x09, 0x19, 0x04, 0x00, 0x10, 0x83, 0x01, 0x02, 0x67, 0x65, 0x73, 0x70, 0x61, 0xc3, 0xb1, 0x61}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a interface{}
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeMapInterfaceKeyInterfaceValues(b *testing.B) {
+	buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a map[interface{}]interface{}
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a map[interface{}]interface{}
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeMapInterfaceValues(b *testing.B) {
+	buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a map[string]interface{}
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a map[string]interface{}
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeMapInt8Values(b *testing.B) {
+	buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0x23, 0x63, 0x41, 0x6d, 0x74, 0x21}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a map[string]int8
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0x23, 0x63, 0x41, 0x6d, 0x74, 0x21}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a map[string]int8
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeMapIntoInterface(b *testing.B) {
+	buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a interface{}
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		var a interface{}
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }
 
 func BenchmarkDecodeMapIntoStruct(b *testing.B) {
+	buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	type MyType struct {
+		Fun bool
+		Amt int8
+	}
+	var a MyType
+
 	for i := 0; i < b.N; i++ {
-		buf := []byte{0xa2, 0x63, 0x46, 0x75, 0x6e, 0xf5, 0x63, 0x41, 0x6d, 0x74, 0x21}
-		r := bytes.NewReader(buf)
-		d := NewDecoder(r)
-		type MyType struct {
-			Fun bool
-			Amt int8
-		}
-		var a MyType
-		check(d.Decode(&a))
+		d.Decode(&a)
 	}
 }

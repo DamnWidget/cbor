@@ -91,10 +91,10 @@ func (dec *Decoder) blind() (v interface{}, vk reflect.Kind, err error) {
 		vk = reflect.Map
 	case absolutePositiveBigNum:
 		vk = bigNum
-		v = dec.decodeBigNum()
+		v = dec.decodePositiveBigNum()
 	case absoluteNegativeBigNum:
 		vk = bigNum
-		v = new(big.Int).Neg(dec.decodeBigNum())
+		v = new(big.Int).Neg(dec.decodeNegativeBigNum())
 	case absoluteStringDateTime:
 		vk = stringDateTime
 		v = dec.decodeStringDateTime()

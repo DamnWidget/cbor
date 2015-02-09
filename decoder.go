@@ -134,10 +134,11 @@ func (dec *Decoder) Decode(v interface{}) (err error) {
 	case *float64:
 		*t = dec.decodeFloat64()
 	case *big.Int:
-		n := dec.decodeBigNum()
 		if v.(*big.Int).Sign() < 0 {
+			n := dec.decodeNegativeBigNum()
 			*t = *n.Neg(n)
 		} else {
+			n := dec.decodePositiveBigNum()
 			*t = *n
 		}
 	case *time.Time:
@@ -470,14 +471,14 @@ func (dec *Decoder) decodeBigFloat() *big.Rat {
 		m := int64(dec.decodeInt())
 		return bigFloatToRatFromInt64(m, e)
 	case cborTag:
-		m := dec.decodeBigNum()
+		m := dec.decodePositiveBigNum()
 		return bigFloatToRatFromBigInt(m, e)
 	}
 	return big.NewRat(0, 0)
 }
 
-// Decode big num
-func (dec *Decoder) decodeBigNum() *big.Int {
+// Decode positive big num
+func (dec *Decoder) decodePositiveBigNum() *big.Int {
 	major, _, err := dec.parser.parseInformation()
 	checkErr(err)
 
@@ -487,6 +488,19 @@ func (dec *Decoder) decodeBigNum() *big.Int {
 	i := new(big.Int)
 	i.SetBytes(dec.decodeBytes())
 	return i
+}
+
+// Decode negative big num
+func (dec *Decoder) decodeNegativeBigNum() *big.Int {
+	major, _, err := dec.parser.parseInformation()
+	checkErr(err)
+
+	if major != cborByteString {
+		panic(fmt.Errorf("expected bytes found %v", major))
+	}
+	i := new(big.Int)
+	i.SetBytes(dec.decodeBytes())
+	return i.Add(i, big.NewInt(1))
 }
 
 // Decode a base64 url
