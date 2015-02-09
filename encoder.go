@@ -16,9 +16,13 @@
 package cbor
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"math/big"
+	"reflect"
 	"time"
+	"unsafe"
 )
 
 // Type of function that handler encoding of extensions
@@ -39,6 +43,16 @@ func NewEncoder(w io.Writer, options ...func(*Encoder)) *Encoder {
 		}
 	}
 	return e
+}
+
+// Check if the pointer passed to Encode
+// is nil and then call enc.encodeNil()
+func (enc *Encoder) isValidPointer(t unsafe.Pointer) bool {
+	if t == nil {
+		enc.encodeNil()
+		return false
+	}
+	return true
 }
 
 // Encoder takes any object passed as parameter and
@@ -94,55 +108,92 @@ func (enc *Encoder) Encode(v interface{}) (err error) {
 		enc.encodeBigFloat(t)
 	case []uint8:
 		enc.encodeByteString(t)
-	// case string:
-	// 	enc.encodeStringTest(v)
+	case string:
+		enc.encodeTextString(t)
 	case *bool:
-		enc.encodeBool(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeBool(*t)
+		}
 	case *uint8:
-		enc.encodeUint(uint64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeUint(uint64(*t))
+		}
 	case *int8:
-		enc.encodeInt(int64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeInt(int64(*t))
+		}
 	case *uint16:
-		enc.encodeUint(uint64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeUint(uint64(*t))
+		}
 	case *int16:
-		enc.encodeInt(int64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeInt(int64(*t))
+		}
 	case *uint32:
-		enc.encodeUint(uint64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeUint(uint64(*t))
+		}
 	case *int32:
-		enc.encodeInt(int64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeInt(int64(*t))
+		}
 	case *uint64:
-		enc.encodeUint(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeUint(*t)
+		}
 	case *int64:
-		enc.encodeInt(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeInt(*t)
+		}
 	case *uint:
-		enc.encodeUint(uint64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeUint(uint64(*t))
+		}
 	case *int:
-		enc.encodeInt(int64(*t))
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeInt(int64(*t))
+		}
 	case *float16:
-		enc.encodeFloat16(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeFloat16(*t)
+		}
 	case *float32:
-		enc.encodeFloat32(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeFloat32(*t)
+		}
 	case *float64:
-		enc.encodeFloat64(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeFloat64(*t)
+		}
 	case *big.Int:
-		if t.Sign() < 0 {
-			enc.encodeBigInt(*t)
-		} else {
-			enc.encodeBigUint(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			if t.Sign() < 0 {
+				enc.encodeBigInt(*t)
+			} else {
+				enc.encodeBigUint(*t)
+			}
 		}
 	case *time.Time:
-		enc.encodeEpochDateTime(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeEpochDateTime(*t)
+		}
 	case *big.Rat:
-		enc.encodeBigFloat(*t)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeBigFloat(*t)
+		}
 	case *[]uint8:
-		enc.encodeByteString(*t)
-		// case *string:
-		// 	enc.encodeStringTest(*v)
-		// case reflect.Value:
-		// 	enc.encode(v)
-		// default:
-		// 	rv := reflect.ValueOf(*v)
-		// 	enc.encode(rv)
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeByteString(*t)
+		}
+	case *string:
+		if enc.isValidPointer(unsafe.Pointer(t)) {
+			enc.encodeTextString(*t)
+		}
+	case reflect.Value:
+		enc.encode(t, v)
+	default:
+		enc.encode(reflect.ValueOf(v), v)
 	}
 
 	return nil
@@ -150,78 +201,61 @@ func (enc *Encoder) Encode(v interface{}) (err error) {
 
 // encode is being used when the type of the supplier of the encode
 // operation is a slice, a map an interface or any other custom type
-// func (enc *Encoder) encode(rv reflect.Value) (err error) {
-// 	// If rv is a pointer, get the value it's references
-// 	for rv.Kind() == reflect.Ptr {
-// 		// Lets encode nil values if present
-// 		if rv.IsNil() {
-// 			enc.encodeNil()
-// 			return
-// 		}
-// 		rv = rv.Elem()
-// 	}
-// 	if !rv.IsValid() {
-// 		// Encode as nil if the value is not valid
-// 		enc.encodeNil()
-// 		return
-// 	}
-// 	var handler handleEncFn
-// 	handler, err = enc.lookupFn(rv)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer func() {
-// 		if r := recover(); r != nil {
-// 			err = errors.New(fmt.Sprint(r))
-// 		}
-// 	}()
-// 	return handler(enc, rv)
-// }
+func (enc *Encoder) encode(rv reflect.Value, vs ...interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprint(r))
+		}
+	}()
 
-// lookup for an encode function based on the value type
-// func (enc *Encoder) lookupFn(rv reflect.Value) (handler handleEncFn, e error) {
-// 	switch rv.Type().Kind() {
-// 	case reflect.Bool:
-// 		handler = (*Encoder).encodekBool
-// 	case reflect.Uint8:
-// 		handler = (*Encoder).encodekUint8
-// 	case reflect.Int8:
-// 		handler = (*Encoder).encodekInt8
-// 	case reflect.Uint16:
-// 		handler = (*Encoder).encodekUint16
-// 	case reflect.Int16:
-// 		handler = (*Encoder).encodekInt16
-// 	case reflect.Uint32:
-// 		handler = (*Encoder).encodekUin32
-// 	case reflect.Int32:
-// 		handler = (*Encoder).encodekInt32
-// 	case reflect.Uint64:
-// 		handler = (*Encoder).encodekUin64
-// 	case reflect.Int64:
-// 		handler = (*Encoder).encodekInt64
-// 	case reflect.Uint:
-// 		handler = (*Encoder).encodekUint
-// 	case reflect.Int:
-// 		handler = (*Encoder).encodekInt
-// 	case reflect.Float32:
-// 		handler = (*Encoder).encodekFloat32
-// 	case reflect.Float64:
-// 		handler = (*Encoder).encodekFloat64
-// 	case reflect.Invalid:
-// 		handler = (*Encoder).encodekInvalid
-// 	case reflect.Slice, reflect.Array:
-// 		handler = (*Encoder).encodekSlice
-// 	case reflect.Map:
-// 		handler = (*Encoder).encodekMap
-// 	case reflect.Struct:
-// 		handler = (*Encoder).encodekStruct
-// 	case reflect.Interface:
-// 		handler = (*Encoder).encodekInterface
-// 	default:
-// 		handler, e = LookupExtensionFn(rv.Type())
-// 	}
-// 	return handler, e
-// }
+	// If rv is a pointer, get the value it's references
+	for rv.Kind() == reflect.Ptr {
+		// Lets encode nil values if present
+		if rv.IsNil() {
+			enc.encodeNil()
+			return
+		}
+		rv = rv.Elem()
+	}
+	if !rv.IsValid() {
+		// Encode as nil if the value is not valid
+		enc.encodeNil()
+		return
+	}
+	var v interface{} = rv.Interface()
+	if len(vs) > 0 {
+		v = vs[0]
+	}
+
+	switch rv.Type().Kind() {
+	case reflect.Bool:
+		err = enc.composer.composeBoolean(v.(bool))
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+		_, err = enc.composer.composeUint(v.(uint64))
+	case reflect.Int32:
+		_, err = enc.composer.composeInt(int64(v.(int32)))
+	case reflect.Int8, reflect.Int16, reflect.Int64, reflect.Int:
+		_, err = enc.composer.composeInt(v.(int64))
+	case reflect.Float32:
+		err = enc.composer.composeFloat32(v.(float32))
+	case reflect.Float64:
+		err = enc.composer.composeFloat64(v.(float64))
+	case reflect.Invalid:
+		err = enc.composer.composeNil()
+	case reflect.Slice, reflect.Array:
+		enc.encodeSlice(rv)
+		// case reflect.Map:
+		// 	err = enc.encodeMap(rv)
+		// case reflect.Struct:
+		// 	err = enc.encodeStruct()
+		// case reflect.Interface:
+		// 	err = enc.encodeInterface()
+		// default:
+		// 	err = enc.lookupExtension(rv)
+	}
+
+	return err
+}
 
 // Encode a Nil value
 func (enc *Encoder) encodeNil() {
@@ -304,5 +338,43 @@ func (enc *Encoder) encodeEpochDateTime(v time.Time) {
 func (enc *Encoder) encodeBigFloat(v big.Rat) {
 	if err := enc.composer.composeBigFloat(v); err != nil {
 		panic(err)
+	}
+}
+
+// Encode a Text String (UTF-8)
+func (enc *Encoder) encodeTextString(v string) {
+	if err := enc.composer.composeString(v); err != nil {
+		panic(err)
+	}
+}
+
+// Encode an Slice
+func (enc *Encoder) encodeSlice(rv reflect.Value) {
+	etp := rv.Type().Elem()
+	if etp.Kind() == reflect.Uint8 {
+		// Bytes String
+		enc.encodeByteString(rv.Bytes())
+		return
+	}
+	l := uint(rv.Len())
+	var info byte
+	if l < uint(cborSmallInt) {
+		info = byte(l)
+	} else {
+		var err error
+		if info, err = infoHelper(uint(l)); err != nil {
+			panic(err)
+		}
+	}
+	if err := enc.composer.composeInformation(cborDataArray, info); err != nil {
+		panic(err)
+	}
+	if l > uint(cborSmallInt) {
+		enc.encodeUint(uint64(l))
+	}
+	for i := 0; i < int(l); i++ {
+		if err := enc.encode(rv.Index(i)); err != nil {
+			panic(err)
+		}
 	}
 }

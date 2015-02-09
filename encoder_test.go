@@ -680,6 +680,184 @@ func TestEncodePointerToBigFloat(t *testing.T) {
 	expect(buf.Bytes()[11], byte(0x00), t, "TestEncodePointerToBigFloat")
 }
 
+func TestEncodeString(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	check(e.Encode("水"))
+	expect(buf.Bytes()[0], byte(0x63), t, "TestEncodeString")
+	expect(buf.Bytes()[1], byte(0xe6), t, "TestEncodeString")
+	expect(buf.Bytes()[2], byte(0xb0), t, "TestEncodeString")
+	expect(buf.Bytes()[3], byte(0xb4), t, "TestEncodeString")
+	check(e.Encode("𐅑"))
+	expect(buf.Bytes()[4], byte(0x64), t, "TestEncodeString")
+	expect(buf.Bytes()[5], byte(0xf0), t, "TestEncodeString")
+	expect(buf.Bytes()[6], byte(0x90), t, "TestEncodeString")
+	expect(buf.Bytes()[7], byte(0x85), t, "TestEncodeString")
+	expect(buf.Bytes()[8], byte(0x91), t, "TestEncodeString")
+}
+
+func TestEncodePointerToString(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v string = "水"
+	check(e.Encode(&v))
+	expect(buf.Bytes()[0], byte(0x63), t, "TestEncodePointerToString")
+	expect(buf.Bytes()[1], byte(0xe6), t, "TestEncodePointerToString")
+	expect(buf.Bytes()[2], byte(0xb0), t, "TestEncodePointerToString")
+	expect(buf.Bytes()[3], byte(0xb4), t, "TestEncodePointerToString")
+	v = "𐅑"
+	check(e.Encode(&v))
+	expect(buf.Bytes()[4], byte(0x64), t, "TestEncodePointerToString")
+	expect(buf.Bytes()[5], byte(0xf0), t, "TestEncodePointerToString")
+	expect(buf.Bytes()[6], byte(0x90), t, "TestEncodePointerToString")
+	expect(buf.Bytes()[7], byte(0x85), t, "TestEncodePointerToString")
+	expect(buf.Bytes()[8], byte(0x91), t, "TestEncodePointerToString")
+}
+
+func TestEncodeNilPointer(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v *int32 = nil
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], absoluteNil, t, "TestEncodeNil")
+	type MyType struct{ a int32 }
+	var m *MyType
+	check(e.Encode(m))
+	expect(buf.Bytes()[1], absoluteNil, t, "TestEncodeNil")
+}
+
+func TestEncodeBoolInterface(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v interface{} = false
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], absoluteFalse, t, "TestEncodeBoolInterface")
+	v = true
+	check(e.Encode(v))
+	expect(buf.Bytes()[1], absoluteTrue, t, "TestEncodeBoolInterface")
+}
+
+func TestEncodeUintInterface(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v interface{} = uint8(10)
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], byte(0x0a), t, "TestEncodeUintInterface")
+	v = uint16(1000)
+	check(e.Encode(v))
+	expect(buf.Bytes()[1], byte(0x19), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[2], byte(0x03), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[3], byte(0xe8), t, "TestEncodeUintInterface")
+	v = uint32(1000000)
+	check(e.Encode(v))
+	expect(buf.Bytes()[4], byte(0x1a), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[5], byte(0x00), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[6], byte(0x0f), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[7], byte(0x42), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[8], byte(0x40), t, "TestEncodeUintInterface")
+	v = uint64(18446744073709551615)
+	check(e.Encode(v))
+	expect(buf.Bytes()[9], byte(0x1b), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[10], byte(0xff), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[11], byte(0xff), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[12], byte(0xff), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[13], byte(0xff), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[14], byte(0xff), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[15], byte(0xff), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[16], byte(0xff), t, "TestEncodeUintInterface")
+	expect(buf.Bytes()[17], byte(0xff), t, "TestEncodeUintInterface")
+}
+
+func TestEncodeIntInterface(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v interface{} = int8(-10)
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], byte(0x29), t, "TestEncodeIntInterface")
+	v = int16(-1000)
+	check(e.Encode(v))
+	expect(buf.Bytes()[1], byte(0x39), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[2], byte(0x03), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[3], byte(0xe7), t, "TestEncodeIntInterface")
+	v = int32(-1000000)
+	check(e.Encode(v))
+	expect(buf.Bytes()[4], byte(0x3a), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[5], byte(0x00), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[6], byte(0x0f), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[7], byte(0x42), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[8], byte(0x3f), t, "TestEncodeIntInterface")
+	v = int64(-18446744073709551)
+	check(e.Encode(v))
+	expect(buf.Bytes()[9], byte(0x3b), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[10], byte(0x00), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[11], byte(0x41), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[12], byte(0x89), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[13], byte(0x37), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[14], byte(0x4b), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[15], byte(0xc6), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[16], byte(0xa7), t, "TestEncodeIntInterface")
+	expect(buf.Bytes()[17], byte(0xee), t, "TestEncodeIntInterface")
+}
+
+func TestEncodeFloat32Interface(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v interface{} = float32(3.4028234663852886e+38)
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], byte(0xfa), t, "TestEncodeFloat32Interface")
+	expect(buf.Bytes()[1], byte(0x7f), t, "TestEncodeFloat32Interface")
+	expect(buf.Bytes()[2], byte(0x7f), t, "TestEncodeFloat32Interface")
+	expect(buf.Bytes()[3], byte(0xff), t, "TestEncodeFloat32Interface")
+	expect(buf.Bytes()[4], byte(0xff), t, "TestEncodeFloat32Interface")
+}
+
+func TestEncodeFloat64Interface(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v interface{} = float64(1.0e+300)
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], byte(0xfb), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[1], byte(0x7e), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[2], byte(0x37), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[3], byte(0xe4), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[4], byte(0x3c), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[5], byte(0x88), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[6], byte(0x00), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[7], byte(0x75), t, "TestEncodeFloat64Interface")
+	expect(buf.Bytes()[8], byte(0x9c), t, "TestEncodeFloat64Interface")
+}
+
+func TestEncodeSlice(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	check(e.Encode([]int32{-10, 1000, 10, -1000}))
+	expect(buf.Bytes()[0], byte(0x84), t, "TestEncodeSlice")
+	expect(buf.Bytes()[1], byte(0x29), t, "TestEncodeSlice")
+	expect(buf.Bytes()[2], byte(0x19), t, "TestEncodeSlice")
+	expect(buf.Bytes()[3], byte(0x03), t, "TestEncodeSlice")
+	expect(buf.Bytes()[4], byte(0xe8), t, "TestEncodeSlice")
+	expect(buf.Bytes()[5], byte(0x0a), t, "TestEncodeSlice")
+	expect(buf.Bytes()[6], byte(0x39), t, "TestEncodeSlice")
+	expect(buf.Bytes()[7], byte(0x03), t, "TestEncodeSlice")
+	expect(buf.Bytes()[8], byte(0xe7), t, "TestEncodeSlice")
+}
+
+func TestEncodePointerToSlice(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	v := []int32{-10, 1000, 10, -1000}
+	check(e.Encode(&v))
+	expect(buf.Bytes()[0], byte(0x84), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[1], byte(0x29), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[2], byte(0x19), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[3], byte(0x03), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[4], byte(0xe8), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[5], byte(0x0a), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[6], byte(0x39), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[7], byte(0x03), t, "TestEncodePointerToSlice")
+	expect(buf.Bytes()[8], byte(0xe7), t, "TestEncodePointerToSlice")
+}
+
 // benchmarks
 func BenchmarkEncodeBool(b *testing.B) {
 	buf := bytes.NewBuffer(nil)
@@ -700,8 +878,9 @@ func BenchmarkEncodeUint(b *testing.B) {
 func BenchmarkEncodeInt(b *testing.B) {
 	buf := bytes.NewBuffer(nil)
 	e := NewEncoder(buf)
+	v := int32(-650000)
 	for i := 0; i < b.N; i++ {
-		e.Encode(int32(-650000))
+		e.Encode(&v)
 	}
 }
 
@@ -778,6 +957,60 @@ func BenchmarkEncodeBigFloat(b *testing.B) {
 	e := NewEncoder(buf)
 	var v *big.Rat = big.NewRat(3, 2)
 
+	for i := 0; i < b.N; i++ {
+		e.Encode(v)
+	}
+}
+
+func BenchmarkEncodeString(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	for i := 0; i < b.N; i++ {
+		e.Encode("水")
+	}
+}
+
+func BenchmarkEncodeBoolInterface(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var v interface{} = false
+	for i := 0; i < b.N; i++ {
+		e.Encode(v)
+	}
+}
+
+func becnhmarkInterfaceHelper(b *testing.B, v interface{}) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	for i := 0; i < b.N; i++ {
+		e.Encode(v)
+	}
+}
+
+func BenchmarkEncodeUintInterface(b *testing.B) {
+	var v interface{} = uint8(10)
+	becnhmarkInterfaceHelper(b, v)
+}
+
+func BenchmarkEncodeIntInterface(b *testing.B) {
+	var v interface{} = int8(-10)
+	becnhmarkInterfaceHelper(b, v)
+}
+
+func BenchmarkEncodeFloat32Interface(b *testing.B) {
+	var v interface{} = float32(3.4028234663852886e+38)
+	becnhmarkInterfaceHelper(b, v)
+}
+
+func BenchmarkEncodeFloat64Interface(b *testing.B) {
+	var v interface{} = float64(1.0e+300)
+	becnhmarkInterfaceHelper(b, v)
+}
+
+func BenchmarkEncodeSliceFourInts32(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	v := []int32{-10, 1000, 10, -1000}
 	for i := 0; i < b.N; i++ {
 		e.Encode(v)
 	}

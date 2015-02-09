@@ -21,6 +21,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"reflect"
 	"time"
 	"unsafe"
 )
@@ -232,25 +233,20 @@ func (c *Composer) composeFloat64(f float64) error {
 
 // Write len(b) + 1 bytes into the
 // io.Writer as a sequence of bytes
-func (c *Composer) composeBytes(b []byte) (err error) {
+func (c *Composer) composeBytes(b []byte, major ...Major) (err error) {
+	m := cborByteString
+	if len(major) != 0 {
+		m = major[0]
+	}
 	l := uint(len(b))
 	if l <= 24 {
-		err = c.composeInformation(cborByteString, byte(l))
+		err = c.composeInformation(m, byte(l))
 	} else {
-		var info byte
-		if l <= math.MaxUint8 {
-			info = cborUint8
-		} else if l <= math.MaxUint16 {
-			info = cborUint16
-		} else if l <= math.MaxUint32 {
-			info = cborUint32
-		} else if l <= math.MaxUint64 {
-			info = cborUint64
-		} else {
-			return fmt.Errorf("totally unexpected error, []byte buf length size is unkwnown %v!", l)
+		info, err := infoHelper(l)
+		if err != nil {
+			return err
 		}
-
-		err = c.composeInformation(cborByteString, info)
+		err = c.composeInformation(m, info)
 	}
 	if err != nil {
 		return err
@@ -306,4 +302,59 @@ func (c *Composer) composeBigFloat(r big.Rat) error {
 		return err
 	}
 	return nil
+}
+
+// Write len(s) + 1 bytes into the
+// io.Writer as an UTF-8 string
+func (c *Composer) composeString(s string) error {
+	return c.composeBytes([]byte(s), cborTextString)
+}
+
+// Write N bytes into the
+// io.Writer as an encoded CBOR slice
+func (c *Composer) composeSlice(rv reflect.Value) error {
+	etp := rv.Type().Elem()
+	if etp.Kind() == reflect.Uint8 {
+		// Bytes String
+		return c.composeBytes(rv.Bytes())
+	}
+	l := uint(rv.Len())
+	info, err := infoHelper(uint(l))
+	if err != nil {
+		return err
+	}
+	if err := c.composeInformation(cborDataArray, info); err != nil {
+		return err
+	}
+	if l > uint(cborSmallInt) {
+		if _, err := c.composeUint(uint64(l)); err != nil {
+			return err
+		}
+	}
+	for i := uint(0); i < l; i++ {
+
+		// if err := c.composeValue(rv.Index(i)); err != nil {
+		// 	return err
+		// }
+	}
+	return nil
+}
+
+//
+
+// get the info code depending of the size of l
+func infoHelper(l uint) (byte, error) {
+	var info byte
+	if l <= math.MaxUint8 {
+		info = cborUint8
+	} else if l <= math.MaxUint16 {
+		info = cborUint16
+	} else if l <= math.MaxUint32 {
+		info = cborUint32
+	} else if l <= math.MaxUint64 {
+		info = cborUint64
+	} else {
+		return 0, fmt.Errorf("totally unexpected error, []byte buf length size is unkwnown %v!", l)
+	}
+	return info, nil
 }
