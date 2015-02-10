@@ -286,7 +286,7 @@ func (c *Composer) composeEpochDateTime(t time.Time) error {
 	return err
 }
 
-// Write N bytes iunto the io.Writer
+// Write N bytes into the io.Writer
 // as an encoded CBOR Big Float
 func (c *Composer) composeBigFloat(r big.Rat) error {
 	if _, err := c.write([]byte{absoluteBigFloat, byte(0x82)}); err != nil {
@@ -307,6 +307,72 @@ func (c *Composer) composeBigFloat(r big.Rat) error {
 // io.Writer as an UTF-8 string
 func (c *Composer) composeString(s string) error {
 	return c.composeBytes([]byte(s), cborTextString)
+}
+
+// Write 5 bytes into the
+// io.Writer as a CBOR NaN value
+func (c *Composer) composeNaN() error {
+	if _, err := c.write([]byte{0xfa, 0x7f, 0xc0, 0x00, 0x00}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Write 5 bytes into the
+// io.Writer as a CBOR Infinity value
+func (c *Composer) composeInfinity(neg ...bool) error {
+	data := []byte{0xfa, 0x7f, 0x80, 0x00, 0x00}
+	if len(neg) > 0 && neg[0] {
+		data = []byte{0xfa, 0xff, 0x80, 0x00, 0x00}
+	}
+	if _, err := c.write(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Write 9 bytes into the io.Writer as a
+// CBOR NaN value for double precission
+func (c *Composer) composeDoublePrecissionNaN() error {
+	if _, err := c.write([]byte{0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Write 9 bytes into the io.Writer as a
+// CBOR Infinity value for double precission
+func (c *Composer) composeDoublePrecissionInfinity(neg ...bool) error {
+	data := []byte{0xfb, 0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	if len(neg) > 0 && neg[0] {
+		data = []byte{0xfb, 0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	}
+	if _, err := c.write(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Write 3 bytes into the io.Writer
+// as a CBOR NaN canonicalized float16 vlaue
+func (c *Composer) composeCanonicalNaN() error {
+	if _, err := c.write([]byte{0xf9, 0x7e, 0x00}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Write 3 bytes into the io.Writer
+// as a CBOR Infinity canonicalized float16 value
+func (c *Composer) composeCanonicalInfinity(neg ...bool) error {
+	data := []byte{0xf9, 0x7c, 0x00}
+	if len(neg) > 0 && neg[0] {
+		data = []byte{0xf9, 0xfc, 0x00}
+	}
+	if _, err := c.write(data); err != nil {
+		return err
+	}
+	return nil
 }
 
 // get the info code depending of the size of l

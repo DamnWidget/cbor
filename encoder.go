@@ -16,12 +16,14 @@
 package cbor
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"reflect"
 	"time"
+	"unicode"
 	"unsafe"
 )
 
@@ -30,8 +32,9 @@ type handleEncFn handleDecFn
 
 // An Encoder writes and encode CBOR objects to an output stream
 type Encoder struct {
-	composer *Composer
-	strict   bool
+	composer  *Composer
+	canonical bool
+	strict    bool
 }
 
 // NewEncoder returns a new encoder that write to w
@@ -230,14 +233,26 @@ func (enc *Encoder) encode(rv reflect.Value, vs ...interface{}) (err error) {
 	switch rv.Type().Kind() {
 	case reflect.Bool:
 		err = enc.composer.composeBoolean(v.(bool))
-	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+	case reflect.Uint8:
+		_, err = enc.composer.composeUint(uint64(v.(uint8)))
+	case reflect.Uint16:
+		_, err = enc.composer.composeUint(uint64(v.(uint16)))
+	case reflect.Uint32:
+		_, err = enc.composer.composeUint(uint64(v.(uint32)))
+	case reflect.Uint64:
 		_, err = enc.composer.composeUint(v.(uint64))
+	case reflect.Uint:
+		_, err = enc.composer.composeUint(uint64(v.(uint)))
+	case reflect.Int8:
+		_, err = enc.composer.composeInt(int64(v.(int8)))
+	case reflect.Int16:
+		_, err = enc.composer.composeInt(int64(v.(int16)))
 	case reflect.Int32:
 		_, err = enc.composer.composeInt(int64(v.(int32)))
+	case reflect.Int64:
+		_, err = enc.composer.composeInt(v.(int64))
 	case reflect.Int:
 		_, err = enc.composer.composeInt(int64(v.(int)))
-	case reflect.Int8, reflect.Int16, reflect.Int64:
-		_, err = enc.composer.composeInt(v.(int64))
 	case reflect.Float32:
 		err = enc.composer.composeFloat32(v.(float32))
 	case reflect.Float64:
@@ -250,8 +265,8 @@ func (enc *Encoder) encode(rv reflect.Value, vs ...interface{}) (err error) {
 		enc.encodeSlice(rv)
 	case reflect.Map:
 		enc.encodeMap(rv)
-		// case reflect.Struct:
-		// 	err = enc.encodeStruct()
+	case reflect.Struct:
+		enc.encodeStruct(rv)
 		// case reflect.Interface:
 		// 	err = enc.encodeInterface()
 		// default:
@@ -400,6 +415,49 @@ func (enc *Encoder) encodeMap(rv reflect.Value) {
 		}
 	}
 
+}
+
+// Encode a Struct
+func (enc *Encoder) encodeStruct(rv reflect.Value, array ...bool) {
+	// buffer the fields encoding
+	buf := bytes.NewBuffer(nil)
+	w := enc.composer.w
+	enc.composer.w = buf
+
+	exportedFields := 0
+	numfields := rv.NumField()
+	for i := 0; i < numfields; i++ {
+		field := rv.Type().Field(i)
+		key := field.Name
+		if unicode.IsUpper(rune(key[0])) {
+			tag := field.Tag.Get("cbor")
+			if tag != "" {
+				if tag == "-" {
+					continue
+				}
+				key = tag
+			}
+			exportedFields++
+			enc.encodeTextString(key)
+			if err := enc.encode(rv.Field(i)); err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	enc.composer.w = w
+	var info byte
+	if len(array) > 0 && array[0] {
+		info, _ = calculateInfoFromIntLength(exportedFields * 2)
+	} else {
+		info, _ = calculateInfoFromIntLength(exportedFields)
+	}
+	if err := enc.composer.composeInformation(cborDataMap, info); err != nil {
+		panic(err)
+	}
+	if _, err := enc.composer.write(buf.Bytes()); err != nil {
+		panic(err)
+	}
 }
 
 // helper function that calculates the size

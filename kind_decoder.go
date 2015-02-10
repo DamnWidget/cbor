@@ -21,7 +21,6 @@ import (
 	"io"
 	"log"
 	"reflect"
-	"strconv"
 	"strings"
 )
 
@@ -227,9 +226,9 @@ func (dec *Decoder) decodekMap(rv reflect.Value) error {
 // Decode into an struct
 //
 // CBOR arrays and maps can be decoded into structs using a
-// simple series of rules and conventions if the strict mode is
-// not enforced and there is a duplicated key in the map (or
-// array) , the behavior is totally undefined
+// simple series of rules and conventions. If the strict mode
+// is not enforced and there is a duplicated key in the map
+// (or array) , the behavior is totally undefined
 //
 // If the underlying CBOR structure is an array the convention
 // is to use odds indexes as keys and even indexes as value as
@@ -354,17 +353,6 @@ func (dec *Decoder) lookupStructTag(st reflect.Value, tag string, array bool) st
 	for i := 0; i < st.NumField(); i++ {
 		field := st.Type().Field(i)
 		t := field.Tag.Get("cbor")
-		if array {
-			if strings.Contains(strings.Trim(t, " "), ",index") {
-				// just ignore errors
-				index, err := strconv.Atoi(strings.Split(t, ",")[0])
-				if err == nil {
-					if i == index {
-						return field.Name
-					}
-				}
-			}
-		}
 		if t != "" {
 			if strings.Contains(t, tag) {
 				return field.Name

@@ -17,6 +17,7 @@ package cbor
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -890,6 +891,41 @@ func TestEncodeMapOfStringInt(t *testing.T) {
 	expect(buf.Bytes()[3], byte(0x6e), t, "TestEncodeMapOfStringInt")
 	expect(buf.Bytes()[4], byte(0x65), t, "TestEncodeMapOfStringInt")
 	expect(buf.Bytes()[5], byte(0x01), t, "TestEncodeMapOfStringInt")
+}
+
+func TestEncodeStruct(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	type MyType struct {
+		polla    int
+		Name     string
+		Age      uint8
+		Address1 []byte
+		Address2 []byte
+		Married  bool
+		Height   float64
+	}
+	v := MyType{
+		Name:     "Test Person",
+		Age:      34,
+		Address1: []byte("4 CBOR St"),
+		Married:  false,
+		Height:   1.77,
+	}
+	check(e.Encode(v))
+	fmt.Printf("%#v\n", buf.Bytes())
+	expect(buf.Bytes()[0], byte(0xa6), t, "TestEncodeStruct")
+	expect(buf.Bytes()[1], byte(0x64), t, "TestEncodeStruct")
+	name := []byte{0x4e, 0x61, 0x6d, 0x65}
+	for i := 0; i < len(name); i++ {
+		expect(buf.Bytes()[i+2], name[i], t, "TestEncodeStruct")
+	}
+	expect(buf.Bytes()[6], byte(0x6b), t, "TestEncodeStruct")
+	test_person := []byte{0x54, 0x65, 0x73, 0x74, 0x20, 0x50, 0x65, 0x72, 0x73, 0x6f, 0x6e}
+	for i := 0; i < len(test_person); i++ {
+		expect(buf.Bytes()[i+7], test_person[i], t, "TestEncodeStruct")
+	}
+	// age := []byte{0x41, 0x67, 0x65}
 }
 
 // benchmarks
