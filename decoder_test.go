@@ -346,6 +346,15 @@ func TestDecodeArrayOfUin32(t *testing.T) {
 	expect(expected, a, t)
 }
 
+func TestDecodeEmptyArray(t *testing.T) {
+	buf := []byte{0x80}
+	r := bytes.NewReader(buf)
+	d := NewDecoder(r)
+	var a []bool
+	check(d.Decode(&a))
+	expect(len(a) == 0, true, t)
+}
+
 func TestDecodeInterface(t *testing.T) {
 	buf := []byte{0x85, 0x04, 0x09, 0x19, 0x04, 0x00, 0x10, 0x83, 0x01, 0x02, 0x67, 0x65, 0x73, 0x70, 0x61, 0xc3, 0xb1, 0x61}
 	r := bytes.NewReader(buf)

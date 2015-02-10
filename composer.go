@@ -21,7 +21,6 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"reflect"
 	"time"
 	"unsafe"
 )
@@ -309,38 +308,6 @@ func (c *Composer) composeBigFloat(r big.Rat) error {
 func (c *Composer) composeString(s string) error {
 	return c.composeBytes([]byte(s), cborTextString)
 }
-
-// Write N bytes into the
-// io.Writer as an encoded CBOR slice
-func (c *Composer) composeSlice(rv reflect.Value) error {
-	etp := rv.Type().Elem()
-	if etp.Kind() == reflect.Uint8 {
-		// Bytes String
-		return c.composeBytes(rv.Bytes())
-	}
-	l := uint(rv.Len())
-	info, err := infoHelper(uint(l))
-	if err != nil {
-		return err
-	}
-	if err := c.composeInformation(cborDataArray, info); err != nil {
-		return err
-	}
-	if l > uint(cborSmallInt) {
-		if _, err := c.composeUint(uint64(l)); err != nil {
-			return err
-		}
-	}
-	for i := uint(0); i < l; i++ {
-
-		// if err := c.composeValue(rv.Index(i)); err != nil {
-		// 	return err
-		// }
-	}
-	return nil
-}
-
-//
 
 // get the info code depending of the size of l
 func infoHelper(l uint) (byte, error) {

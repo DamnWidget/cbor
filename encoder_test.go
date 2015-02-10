@@ -858,6 +858,40 @@ func TestEncodePointerToSlice(t *testing.T) {
 	expect(buf.Bytes()[8], byte(0xe7), t, "TestEncodePointerToSlice")
 }
 
+func TestEncodeSliceOfSlicesOfBools(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	v := [][]bool{
+		[]bool{true, false, false, false},
+		[]bool{},
+		[]bool{false, true},
+	}
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], byte(0x83), t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[1], byte(0x84), t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[2], absoluteTrue, t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[3], absoluteFalse, t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[4], absoluteFalse, t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[5], absoluteFalse, t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[6], byte(0x80), t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[7], byte(0x82), t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[8], absoluteFalse, t, "TestEncodeSliceOfSliceOfBools")
+	expect(buf.Bytes()[9], absoluteTrue, t, "TestEncodeSliceOfSliceOfBools")
+}
+
+func TestEncodeMapOfStringInt(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	v := map[string]int{"One": 1}
+	check(e.Encode(v))
+	expect(buf.Bytes()[0], byte(0xa1), t, "TestEncodeMapOfStringInt")
+	expect(buf.Bytes()[1], byte(0x63), t, "TestEncodeMapOfStringInt")
+	expect(buf.Bytes()[2], byte(0x4f), t, "TestEncodeMapOfStringInt")
+	expect(buf.Bytes()[3], byte(0x6e), t, "TestEncodeMapOfStringInt")
+	expect(buf.Bytes()[4], byte(0x65), t, "TestEncodeMapOfStringInt")
+	expect(buf.Bytes()[5], byte(0x01), t, "TestEncodeMapOfStringInt")
+}
+
 // benchmarks
 func BenchmarkEncodeBool(b *testing.B) {
 	buf := bytes.NewBuffer(nil)
@@ -1011,6 +1045,19 @@ func BenchmarkEncodeSliceFourInts32(b *testing.B) {
 	buf := bytes.NewBuffer(nil)
 	e := NewEncoder(buf)
 	v := []int32{-10, 1000, 10, -1000}
+	for i := 0; i < b.N; i++ {
+		e.Encode(v)
+	}
+}
+
+func BenchmarkEncodeSliceOfSlicesOfBools(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	v := [][]bool{
+		[]bool{true, false, false, false},
+		[]bool{},
+		[]bool{false, true},
+	}
 	for i := 0; i < b.N; i++ {
 		e.Encode(v)
 	}

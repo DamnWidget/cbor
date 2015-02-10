@@ -234,18 +234,22 @@ func (enc *Encoder) encode(rv reflect.Value, vs ...interface{}) (err error) {
 		_, err = enc.composer.composeUint(v.(uint64))
 	case reflect.Int32:
 		_, err = enc.composer.composeInt(int64(v.(int32)))
-	case reflect.Int8, reflect.Int16, reflect.Int64, reflect.Int:
+	case reflect.Int:
+		_, err = enc.composer.composeInt(int64(v.(int)))
+	case reflect.Int8, reflect.Int16, reflect.Int64:
 		_, err = enc.composer.composeInt(v.(int64))
 	case reflect.Float32:
 		err = enc.composer.composeFloat32(v.(float32))
 	case reflect.Float64:
 		err = enc.composer.composeFloat64(v.(float64))
+	case reflect.String:
+		enc.encodeTextString(v.(string))
 	case reflect.Invalid:
 		err = enc.composer.composeNil()
 	case reflect.Slice, reflect.Array:
 		enc.encodeSlice(rv)
-		// case reflect.Map:
-		// 	err = enc.encodeMap(rv)
+	case reflect.Map:
+		enc.encodeMap(rv)
 		// case reflect.Struct:
 		// 	err = enc.encodeStruct()
 		// case reflect.Interface:
@@ -356,25 +360,57 @@ func (enc *Encoder) encodeSlice(rv reflect.Value) {
 		enc.encodeByteString(rv.Bytes())
 		return
 	}
-	l := uint(rv.Len())
-	var info byte
-	if l < uint(cborSmallInt) {
-		info = byte(l)
-	} else {
-		var err error
-		if info, err = infoHelper(uint(l)); err != nil {
-			panic(err)
-		}
+	l := rv.Len()
+	info, err := calculateInfoFromIntLength(l)
+	if err != nil {
+		panic(err)
 	}
 	if err := enc.composer.composeInformation(cborDataArray, info); err != nil {
 		panic(err)
 	}
-	if l > uint(cborSmallInt) {
+	if info > cborSmallInt {
 		enc.encodeUint(uint64(l))
 	}
-	for i := 0; i < int(l); i++ {
+	for i := 0; i < l; i++ {
 		if err := enc.encode(rv.Index(i)); err != nil {
 			panic(err)
 		}
 	}
+}
+
+// Encode a Map
+func (enc *Encoder) encodeMap(rv reflect.Value) {
+	l := rv.Len()
+	info, err := calculateInfoFromIntLength(l)
+	if err != nil {
+		panic(err)
+	}
+	if err := enc.composer.composeInformation(cborDataMap, info); err != nil {
+		panic(err)
+	}
+	if info > cborSmallInt {
+		enc.encodeUint(uint64(l))
+	}
+	for _, key := range rv.MapKeys() {
+		if err := enc.encode(key); err != nil {
+			panic(err)
+		}
+		if err := enc.encode(rv.MapIndex(key)); err != nil {
+			panic(err)
+		}
+	}
+
+}
+
+// helper function that calculates the size
+// of the info byte depending on the given length
+func calculateInfoFromIntLength(l int) (info byte, err error) {
+	if l < int(cborSmallInt) {
+		info = byte(l)
+	} else {
+		if info, err = infoHelper(uint(l)); err != nil {
+			return 0, err
+		}
+	}
+	return info, nil
 }
