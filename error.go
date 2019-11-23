@@ -63,3 +63,48 @@ func NewCanonicalModeError(msg string) *CanonicalModeError {
 func (e *CanonicalModeError) Error() string {
 	return e.Msg
 }
+
+type UnsupportedValueError struct {
+	Value reflect.Value
+	Str   string
+}
+
+func (e *UnsupportedValueError) Error() string {
+	return "cbor: unsupported value: " + e.Str
+}
+
+type BigNumEncodeError struct {
+	Value reflect.Value
+	Str   string
+}
+
+func (e *BigNumEncodeError) Error() string {
+	return "cbor: while encoding big num: " + e.Str
+}
+
+type BigFloatEncodeError struct {
+	Value reflect.Value
+	Str   string
+}
+
+func (e *BigFloatEncodeError) Error() string {
+	return "cbor: while encoding big float: " + e.Str
+}
+
+type DateTimeEncodeError struct {
+	Value reflect.Value
+	Str   string
+}
+
+func (e *DateTimeEncodeError) Error() string {
+	return "cbor: while encoding time.Time: " + e.Str
+}
+
+type StructEncodeError struct {
+	Value reflect.Value
+	Str   string
+}
+
+func (e *StructEncodeError) Error() string {
+	return "cbor: while encoding struct type " + e.Value.Type().String() + ": " + e.Str
+}

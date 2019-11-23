@@ -153,6 +153,17 @@ func (dec *Decoder) Decode(v interface{}) (err error) {
 	case *big.Rat:
 		n := dec.decodeBigFloat()
 		*t = *n
+	case *regexp.Regexp:
+		n := dec.decodeRegexp()
+		*t = *n
+	case *url.URL:
+		if info == cborURI {
+			n := dec.decodeURI()
+			*t = *n
+		} else {
+			n := dec.decodeBase64URI()
+			*t = *n
+		}
 	case *[]byte:
 		*t = dec.decodeBytes()
 	case *string:
@@ -384,10 +395,10 @@ func (dec *Decoder) decodeStringDateTime() time.Time {
 // Decode a positive or negative
 // integer or floating point with
 // additional information a time.Time
-func (dec *Decoder) decodeEpochDateTime(parseInforamtion ...struct{}) time.Time {
+func (dec *Decoder) decodeEpochDateTime(parseInformation ...struct{}) time.Time {
 	var err error
 	var major Major
-	if len(parseInforamtion) == 0 {
+	if len(parseInformation) == 0 {
 		major, _, err = dec.parser.parseInformation()
 		checkErr(err)
 	} else {

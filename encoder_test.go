@@ -17,7 +17,7 @@ package cbor
 
 import (
 	"bytes"
-	"fmt"
+	"math"
 	"math/big"
 	"testing"
 	"time"
@@ -897,24 +897,28 @@ func TestEncodeStruct(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	e := NewEncoder(buf)
 	type MyType struct {
-		polla    int
 		Name     string
 		Age      uint8
 		Address1 []byte
 		Address2 []byte
 		Married  bool
 		Height   float64
+		T        time.Time
+		A        *big.Int
 	}
+	var i big.Int
+	i.SetString("18446744073709551616", 10)
 	v := MyType{
 		Name:     "Test Person",
 		Age:      34,
 		Address1: []byte("4 CBOR St"),
 		Married:  false,
 		Height:   1.77,
+		T:        time.Now(),
+		A:        &i,
 	}
 	check(e.Encode(v))
-	fmt.Printf("%#v\n", buf.Bytes())
-	expect(buf.Bytes()[0], byte(0xa6), t, "TestEncodeStruct")
+	expect(buf.Bytes()[0], byte(0xa8), t, "TestEncodeStruct")
 	expect(buf.Bytes()[1], byte(0x64), t, "TestEncodeStruct")
 	name := []byte{0x4e, 0x61, 0x6d, 0x65}
 	for i := 0; i < len(name); i++ {
@@ -925,7 +929,82 @@ func TestEncodeStruct(t *testing.T) {
 	for i := 0; i < len(test_person); i++ {
 		expect(buf.Bytes()[i+7], test_person[i], t, "TestEncodeStruct")
 	}
-	// age := []byte{0x41, 0x67, 0x65}
+	expect(buf.Bytes()[18], byte(0x63), t, "TestEncodeStruct")
+	age := []byte{0x41, 0x67, 0x65}
+	for i := 0; i < len(age); i++ {
+		expect(buf.Bytes()[i+19], age[i], t, "TestEncodeStruct")
+	}
+	expect(buf.Bytes()[22], byte(0x18), t, "TestEncodeStruct")
+	expect(buf.Bytes()[23], byte(0x22), t, "TestEncodeStruct")
+	expect(buf.Bytes()[24], byte(0x68), t, "TestEncodeStruct")
+	address1 := []byte{0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x31}
+	for i := 0; i < len(address1); i++ {
+		expect(buf.Bytes()[i+25], address1[i], t, "TestEncodeStruct")
+	}
+	expect(buf.Bytes()[33], byte(0x49), t, "TestEncodeStruct")
+	addr := []byte{0x34, 0x20, 0x43, 0x42, 0x4f, 0x52, 0x20, 0x53, 0x74}
+	for i := 0; i < len(addr); i++ {
+		expect(buf.Bytes()[i+34], addr[i], t, "TestEncodeStruct")
+	}
+	expect(buf.Bytes()[43], byte(0x68), t, "TestEncodeStruct")
+	address2 := []byte{0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x32}
+	for i := 0; i < len(address2); i++ {
+		expect(buf.Bytes()[i+44], address2[i], t, "TestEncodeStruct")
+	}
+	expect(buf.Bytes()[52], byte(0x40), t, "TestEncodeStruct")
+	expect(buf.Bytes()[53], byte(0x67), t, "TestEncodeStruct")
+	married := []byte{0x4d, 0x61, 0x72, 0x72, 0x69, 0x65, 0x64}
+	for i := 0; i < len(married); i++ {
+		expect(buf.Bytes()[i+54], married[i], t, "TestEncodeStruct")
+	}
+	expect(buf.Bytes()[61], absoluteFalse, t, "TestEncodeStruct")
+	expect(buf.Bytes()[62], byte(0x66), t, "TestEncodeStruct")
+	height := []byte{0x48, 0x65, 0x69, 0x67, 0x68, 0x74}
+	for i := 0; i < len(height); i++ {
+		expect(buf.Bytes()[i+63], height[i], t, "TestEncodeStruct")
+	}
+	expect(buf.Bytes()[69], byte(0xfb), t, "TestEncodeStruct")
+	expect(buf.Bytes()[70], byte(0x3f), t, "TestEncodeStruct")
+	expect(buf.Bytes()[71], byte(0xfc), t, "TestEncodeStruct")
+	expect(buf.Bytes()[72], byte(0x51), t, "TestEncodeStruct")
+	expect(buf.Bytes()[73], byte(0xeb), t, "TestEncodeStruct")
+	expect(buf.Bytes()[74], byte(0x85), t, "TestEncodeStruct")
+	expect(buf.Bytes()[75], byte(0x1e), t, "TestEncodeStruct")
+	expect(buf.Bytes()[76], byte(0xb8), t, "TestEncodeStruct")
+	expect(buf.Bytes()[77], byte(0x52), t, "TestEncodeStruct")
+}
+
+func TestEncodeInterface(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var a interface{} = int8(126)
+	check(e.Encode(a))
+	expect(buf.Bytes()[0], byte(0x18), t, "TestEncodeInterface")
+	expect(buf.Bytes()[1], byte(0x7e), t, "TestEncodeInterface")
+	check(e.Encode(&a))
+	expect(buf.Bytes()[2], byte(0x18), t, "TestEncodeInterface")
+	expect(buf.Bytes()[3], byte(0x7e), t, "TestEncodeInterface")
+}
+
+func TestEncodeMime(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	v := CBORMIME{
+		"application/x-stuff",
+		map[string]string{"title": "This is ***fun***"},
+	}
+	check(e.Encode(&v))
+	st := `application/x-stuff; title="This is ***fun***"`
+	expected := append([]byte{0xd8, 0x24, 0x78, uint8(len(st))}, []byte(st)...)
+	for i, x := range expected {
+		expect(buf.Bytes()[i], x, t, "TestEncodeMime")
+	}
+}
+
+func TestEncodeNaN(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	check(e.Encode(math.NaN()))
 }
 
 // benchmarks
@@ -1096,5 +1175,57 @@ func BenchmarkEncodeSliceOfSlicesOfBools(b *testing.B) {
 	}
 	for i := 0; i < b.N; i++ {
 		e.Encode(v)
+	}
+}
+
+func BenchmarkEncodeStruct(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	type MyType struct {
+		Name     string
+		Age      uint8
+		Address1 []byte
+		Address2 []byte
+		Married  bool
+		Height   float64
+	}
+	v := MyType{
+		Name:     "Test Person",
+		Age:      34,
+		Address1: []byte("4 CBOR St"),
+		Married:  false,
+		Height:   1.77,
+	}
+	for i := 0; i < b.N; i++ {
+		e.Encode(v)
+	}
+}
+
+func BenchmarkEncodeInterface(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	var a interface{} = int8(126)
+	for i := 0; i < b.N; i++ {
+		e.Encode(a)
+	}
+}
+
+func BenchmarkEncodeMime(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	v := CBORMIME{
+		"application/x-stuff",
+		map[string]string{"title": "This is ***fun***"},
+	}
+	for i := 0; i < b.N; i++ {
+		e.Encode(&v)
+	}
+}
+
+func BenchmarkEncodeNaN(b *testing.B) {
+	buf := bytes.NewBuffer(nil)
+	e := NewEncoder(buf)
+	for i := 0; i < b.N; i++ {
+		e.Encode(math.NaN())
 	}
 }

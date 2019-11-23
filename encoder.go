@@ -17,29 +17,32 @@ package cbor
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
+	"net/url"
 	"reflect"
 	"time"
 	"unicode"
 	"unsafe"
 )
 
-// Type of function that handler encoding of extensions
-type handleEncFn handleDecFn
+// Marshaler interface
+type Marshaler interface {
+	MarshalCBOR() ([]byte, error)
+}
 
 // An Encoder writes and encode CBOR objects to an output stream
 type Encoder struct {
-	composer  *Composer
+	composer  *composer
 	canonical bool
 	strict    bool
 }
 
 // NewEncoder returns a new encoder that write to w
 func NewEncoder(w io.Writer, options ...func(*Encoder)) *Encoder {
-	e := &Encoder{composer: &Composer{w: w}, strict: false}
+	e := &Encoder{composer: &composer{w: w}, strict: false}
 	if len(options) > 0 {
 		for _, option := range options {
 			option(e)
@@ -61,155 +64,114 @@ func (enc *Encoder) isValidPointer(t unsafe.Pointer) bool {
 // Encoder takes any object passed as parameter and
 // writes it into a io.Writer using the C.B.O.R encoding format.
 func (enc *Encoder) Encode(v interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = r.(error)
-		}
-	}()
 
-	// fast path encoding for simple values
+	if ok, err := enc.fastPath(v); !ok {
+		return err
+	}
+
+	return err
+}
+
+func (enc *Encoder) fastPath(v interface{}) (ok bool, err error) {
+	// fast path encoding for builting and simple values
 	switch t := v.(type) {
 	case nil:
-		enc.encodeNil()
+		err = enc.composer.composeNil()
 	case bool:
-		enc.encodeBool(t)
-	case uint8:
-		enc.encodeUint(uint64(t))
-	case int8:
-		enc.encodeInt(int64(t))
-	case uint16:
-		enc.encodeUint(uint64(t))
-	case int16:
-		enc.encodeInt(int64(t))
-	case uint32:
-		enc.encodeUint(uint64(t))
-	case int32:
-		enc.encodeInt(int64(t))
-	case uint64:
-		enc.encodeUint(t)
-	case int64:
-		enc.encodeInt(t)
-	case uint:
-		enc.encodeUint(uint64(t))
-	case int:
-		enc.encodeInt(int64(t))
+		err = enc.composer.composeBoolean(t)
+	case int, int8, int16, int32, int64:
+		_, err = enc.composer.composeInt(reflect.ValueOf(t).Int())
+	case uint, uint8, uint16, uint32, uint64, uintptr:
+		_, err = enc.composer.composeUint(reflect.ValueOf(t).Uint())
 	case float16:
-		enc.encodeFloat16(t)
+		err = encodeFloat16(enc.composer, reflect.ValueOf(t))
 	case float32:
-		enc.encodeFloat32(t)
+		err = encodeFloat32(enc.composer, reflect.ValueOf(t))
 	case float64:
-		enc.encodeFloat64(t)
+		err = encodeFloat64(enc.composer, reflect.ValueOf(t))
 	case big.Int:
 		if t.Sign() < 0 {
-			enc.encodeBigInt(t)
+			err = enc.composer.composeBigInt(&t)
 		} else {
-			enc.encodeBigUint(t)
+			err = enc.composer.composeBigUint(&t)
 		}
 	case time.Time:
-		enc.encodeEpochDateTime(t)
+		err = enc.composer.composeEpochDateTime(&t)
 	case big.Rat:
-		enc.encodeBigFloat(t)
+		err = enc.composer.composeBigFloat(&t)
+	case CBORMIME:
+		err = enc.composer.composeCBORMIME(&t)
 	case []uint8:
-		enc.encodeByteString(t)
+		err = enc.composer.composeBytes(t)
 	case string:
-		enc.encodeTextString(t)
+		err = enc.composer.composeString(t)
 	case *bool:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeBool(*t)
+			err = enc.composer.composeBoolean(*t)
 		}
-	case *uint8:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeUint(uint64(*t))
+	case *int, *int8, *int16, *int32, *int64:
+		if enc.isValidPointer(unsafe.Pointer(reflect.ValueOf(v).Pointer())) {
+			_, err = enc.composer.composeInt(reflect.ValueOf(v).Elem().Int())
 		}
-	case *int8:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeInt(int64(*t))
-		}
-	case *uint16:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeUint(uint64(*t))
-		}
-	case *int16:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeInt(int64(*t))
-		}
-	case *uint32:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeUint(uint64(*t))
-		}
-	case *int32:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeInt(int64(*t))
-		}
-	case *uint64:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeUint(*t)
-		}
-	case *int64:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeInt(*t)
-		}
-	case *uint:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeUint(uint64(*t))
-		}
-	case *int:
-		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeInt(int64(*t))
+	case *uint, *uint8, *uint16, *uint32, *uint64, *uintptr:
+		if enc.isValidPointer(unsafe.Pointer(reflect.ValueOf(v).Pointer())) {
+			_, err = enc.composer.composeUint(reflect.ValueOf(v).Elem().Uint())
 		}
 	case *float16:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeFloat16(*t)
+			err = encodeFloat16(enc.composer, reflect.ValueOf(t).Elem())
 		}
 	case *float32:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeFloat32(*t)
+			err = encodeFloat32(enc.composer, reflect.ValueOf(t).Elem())
 		}
 	case *float64:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeFloat64(*t)
+			err = encodeFloat64(enc.composer, reflect.ValueOf(t).Elem())
 		}
 	case *big.Int:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
 			if t.Sign() < 0 {
-				enc.encodeBigInt(*t)
+				err = enc.composer.composeBigInt(t)
 			} else {
-				enc.encodeBigUint(*t)
+				err = enc.composer.composeBigUint(t)
 			}
 		}
 	case *time.Time:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeEpochDateTime(*t)
+			err = enc.composer.composeEpochDateTime(t)
 		}
 	case *big.Rat:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeBigFloat(*t)
+			err = enc.composer.composeBigFloat(t)
 		}
+	case *CBORMIME:
+		err = enc.composer.composeCBORMIME(t)
+	case *url.URL:
+
 	case *[]uint8:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeByteString(*t)
+			err = enc.composer.composeBytes(*t)
 		}
 	case *string:
 		if enc.isValidPointer(unsafe.Pointer(t)) {
-			enc.encodeTextString(*t)
+			err = enc.composer.composeString(*t)
 		}
 	case reflect.Value:
-		enc.encode(t, v)
+		err = enc.encode(t)
 	default:
-		enc.encode(reflect.ValueOf(v), v)
+		err = enc.encode(reflect.ValueOf(v))
 	}
 
-	return nil
+	if err == nil {
+		return true, nil
+	}
+	return false, err
 }
 
 // encode is being used when the type of the supplier of the encode
 // operation is a slice, a map an interface or any other custom type
-func (enc *Encoder) encode(rv reflect.Value, vs ...interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = errors.New(fmt.Sprint(r))
-		}
-	}()
+func (enc *Encoder) encode(rv reflect.Value) (err error) {
 
 	// If rv is a pointer, get the value it's references
 	for rv.Kind() == reflect.Ptr {
@@ -225,52 +187,56 @@ func (enc *Encoder) encode(rv reflect.Value, vs ...interface{}) (err error) {
 		enc.encodeNil()
 		return
 	}
-	var v interface{} = rv.Interface()
-	if len(vs) > 0 {
-		v = vs[0]
-	}
 
-	switch rv.Type().Kind() {
-	case reflect.Bool:
-		err = enc.composer.composeBoolean(v.(bool))
-	case reflect.Uint8:
-		_, err = enc.composer.composeUint(uint64(v.(uint8)))
-	case reflect.Uint16:
-		_, err = enc.composer.composeUint(uint64(v.(uint16)))
-	case reflect.Uint32:
-		_, err = enc.composer.composeUint(uint64(v.(uint32)))
-	case reflect.Uint64:
-		_, err = enc.composer.composeUint(v.(uint64))
-	case reflect.Uint:
-		_, err = enc.composer.composeUint(uint64(v.(uint)))
-	case reflect.Int8:
-		_, err = enc.composer.composeInt(int64(v.(int8)))
-	case reflect.Int16:
-		_, err = enc.composer.composeInt(int64(v.(int16)))
-	case reflect.Int32:
-		_, err = enc.composer.composeInt(int64(v.(int32)))
-	case reflect.Int64:
-		_, err = enc.composer.composeInt(v.(int64))
-	case reflect.Int:
-		_, err = enc.composer.composeInt(int64(v.(int)))
-	case reflect.Float32:
-		err = enc.composer.composeFloat32(v.(float32))
-	case reflect.Float64:
-		err = enc.composer.composeFloat64(v.(float64))
-	case reflect.String:
-		enc.encodeTextString(v.(string))
-	case reflect.Invalid:
-		err = enc.composer.composeNil()
-	case reflect.Slice, reflect.Array:
-		enc.encodeSlice(rv)
-	case reflect.Map:
-		enc.encodeMap(rv)
-	case reflect.Struct:
-		enc.encodeStruct(rv)
-		// case reflect.Interface:
-		// 	err = enc.encodeInterface()
-		// default:
-		// 	err = enc.lookupExtension(rv)
+	rt := rv.Type()
+	switch rt {
+	case bigNumType:
+		t := rv.Interface().(big.Int)
+		if t.Sign() < 0 {
+			err = enc.composer.composeBigInt(&t)
+		} else {
+			err = enc.composer.composeBigUint(&t)
+		}
+	case bigFloatType:
+		r := rv.Interface().(big.Rat)
+		err = enc.composer.composeBigFloat(&r)
+	case epochTimeType:
+		t := rv.Interface().(time.Time)
+		err = enc.composer.composeEpochDateTime(&t)
+	case cborMimeType:
+		t := rv.Interface().(CBORMIME)
+		err = enc.composer.composeCBORMIME(&t)
+	case float16Type:
+		err = enc.composer.composeFloat16(rv.Interface().(float16))
+	default:
+		switch rt.Kind() {
+		case reflect.Bool:
+			err = enc.composer.composeBoolean(rv.Bool())
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			_, err = enc.composer.composeUint(rv.Uint())
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			_, err = enc.composer.composeInt(rv.Int())
+		case reflect.Float32:
+			err = enc.composer.composeFloat32(rv.Interface().(float32))
+		case reflect.Float64:
+			err = enc.composer.composeFloat64(rv.Float())
+		case reflect.String:
+			err = enc.composer.composeString(rv.String())
+		case reflect.Invalid:
+			err = enc.composer.composeNil()
+		case reflect.Slice, reflect.Array:
+			err = enc.encodeSlice(rv)
+		case reflect.Map:
+			err = enc.encodeMap(rv)
+		case reflect.Struct:
+			err = enc.encodeStruct(rv)
+		case reflect.Interface:
+			err = enc.encodeInterface(rv)
+		case reflect.Ptr:
+			err = enc.encode(rv.Elem())
+			// default:
+			// 	err = enc.lookupExtension(rv)
+		}
 	}
 
 	return err
@@ -304,121 +270,110 @@ func (enc *Encoder) encodeUint(v uint64) {
 	}
 }
 
-// Encode a float16
-func (enc *Encoder) encodeFloat16(v float16) {
-	if err := enc.composer.composeFloat16(v); err != nil {
-		panic(err)
+type floatEncoder int // number of bits
+
+func (bits floatEncoder) encode(c *composer, v reflect.Value) (err error) {
+	f := v.Float()
+	if math.IsInf(f, 0) {
+		err = bits.encodeNewInfinity(c, v)
+	} else if math.IsNaN(f) {
+		err = bits.encodeNewNaN(c, v)
+	} else {
+		b := int(bits)
+		if b == 16 || v.Type() == float16Type {
+			err = c.composeFloat16(v.Interface().(float16))
+		} else if b == 32 {
+			err = c.composeFloat32(v.Interface().(float32))
+		} else {
+			err = c.composeFloat64(f)
+		}
 	}
+	return err
 }
 
-// Encode a float32
-func (enc *Encoder) encodeFloat32(v float32) {
-	if err := enc.composer.composeFloat32(v); err != nil {
-		panic(err)
+func (bits floatEncoder) encodeNewInfinity(c *composer, v reflect.Value) (err error) {
+	if c.isCanonical() {
+		err = c.composeCanonicalInfinity()
+	} else {
+		switch int(bits) {
+		case 16:
+			err = c.composeCanonicalInfinity()
+		case 32:
+			err = c.composeInfinity()
+		case 64:
+			err = c.composeDoublePrecissionInfinity()
+		default:
+			err = &UnsupportedValueError{v, fmt.Sprintf("%#v", v)}
+		}
 	}
+	return err
 }
 
-// Encode a float64
-func (enc *Encoder) encodeFloat64(v float64) {
-	if err := enc.composer.composeFloat64(v); err != nil {
-		panic(err)
+func (bits floatEncoder) encodeNewNaN(c *composer, v reflect.Value) (err error) {
+	if c.isCanonical() {
+		err = c.composeCanonicalNaN()
+	} else {
+		switch int(bits) {
+		case 16:
+			err = c.composeCanonicalNaN()
+		case 32:
+			err = c.composeNaN()
+		case 64:
+			err = c.composeDoublePrecissionNaN()
+		default:
+			err = &UnsupportedValueError{v, v.Type().String()}
+		}
 	}
+	return err
 }
 
-// Encode a bytes string
-func (enc *Encoder) encodeByteString(v []byte) {
-	if err := enc.composer.composeBytes(v); err != nil {
-		panic(err)
-	}
-}
-
-// Encode a positive big.Int
-func (enc *Encoder) encodeBigUint(v big.Int) {
-	if err := enc.composer.composeBigUint(v); err != nil {
-		panic(err)
-	}
-}
-
-// Encode a negative big.Int
-func (enc *Encoder) encodeBigInt(v big.Int) {
-	if err := enc.composer.composeBigInt(v); err != nil {
-		panic(err)
-	}
-}
-
-// Encode a datetime as epoch
-func (enc *Encoder) encodeEpochDateTime(v time.Time) {
-	if err := enc.composer.composeEpochDateTime(v); err != nil {
-		panic(err)
-	}
-}
-
-// Encode a big float
-func (enc *Encoder) encodeBigFloat(v big.Rat) {
-	if err := enc.composer.composeBigFloat(v); err != nil {
-		panic(err)
-	}
-}
-
-// Encode a Text String (UTF-8)
-func (enc *Encoder) encodeTextString(v string) {
-	if err := enc.composer.composeString(v); err != nil {
-		panic(err)
-	}
-}
+var (
+	encodeFloat16 = (floatEncoder(16)).encode
+	encodeFloat32 = (floatEncoder(32)).encode
+	encodeFloat64 = (floatEncoder(64)).encode
+)
 
 // Encode an Slice
-func (enc *Encoder) encodeSlice(rv reflect.Value) {
+func (enc *Encoder) encodeSlice(rv reflect.Value) error {
 	etp := rv.Type().Elem()
 	if etp.Kind() == reflect.Uint8 {
 		// Bytes String
-		enc.encodeByteString(rv.Bytes())
-		return
+		enc.composer.composeBytes(rv.Bytes())
+		return nil
 	}
 	l := rv.Len()
-	info, err := calculateInfoFromIntLength(l)
-	if err != nil {
-		panic(err)
+	if _, err := enc.composer.composeUint(uint64(l), cborDataArray); err != nil {
+		return fmt.Errorf("while enoding slice %v: %s", rv.Type(), err.Error())
 	}
-	if err := enc.composer.composeInformation(cborDataArray, info); err != nil {
-		panic(err)
-	}
-	if info > cborSmallInt {
-		enc.encodeUint(uint64(l))
-	}
+
 	for i := 0; i < l; i++ {
 		if err := enc.encode(rv.Index(i)); err != nil {
-			panic(err)
+			return fmt.Errorf("while enoding slice %v: %s", rv.Type(), err.Error())
 		}
 	}
+	return nil
 }
 
 // Encode a Map
-func (enc *Encoder) encodeMap(rv reflect.Value) {
+func (enc *Encoder) encodeMap(rv reflect.Value) error {
 	l := rv.Len()
-	info, err := calculateInfoFromIntLength(l)
-	if err != nil {
-		panic(err)
-	}
-	if err := enc.composer.composeInformation(cborDataMap, info); err != nil {
-		panic(err)
-	}
-	if info > cborSmallInt {
-		enc.encodeUint(uint64(l))
-	}
-	for _, key := range rv.MapKeys() {
-		if err := enc.encode(key); err != nil {
-			panic(err)
-		}
-		if err := enc.encode(rv.MapIndex(key)); err != nil {
-			panic(err)
-		}
+	if _, err := enc.composer.composeUint(uint64(l), cborDataMap); err != nil {
+		return fmt.Errorf("while enoding map %v: %s", rv.Type(), err.Error())
 	}
 
+	for _, key := range rv.MapKeys() {
+		if err := enc.encode(key); err != nil {
+			return fmt.Errorf("while enoding map %v: %s", rv.Type(), err.Error())
+		}
+		if err := enc.encode(rv.MapIndex(key)); err != nil {
+			return fmt.Errorf("while enoding map %v: %s", rv.Type(), err.Error())
+		}
+	}
+	return nil
 }
 
 // Encode a Struct
-func (enc *Encoder) encodeStruct(rv reflect.Value, array ...bool) {
+func (enc *Encoder) encodeStruct(rv reflect.Value, array ...bool) error {
 	// buffer the fields encoding
 	buf := bytes.NewBuffer(nil)
 	w := enc.composer.w
@@ -428,6 +383,9 @@ func (enc *Encoder) encodeStruct(rv reflect.Value, array ...bool) {
 	numfields := rv.NumField()
 	for i := 0; i < numfields; i++ {
 		field := rv.Type().Field(i)
+		if field.PkgPath != "" { // unexported
+			continue
+		}
 		key := field.Name
 		if unicode.IsUpper(rune(key[0])) {
 			tag := field.Tag.Get("cbor")
@@ -438,9 +396,11 @@ func (enc *Encoder) encodeStruct(rv reflect.Value, array ...bool) {
 				key = tag
 			}
 			exportedFields++
-			enc.encodeTextString(key)
+			if err := enc.composer.composeString(key); err != nil {
+				return fmt.Errorf("while enoding struct %v: %s", rv.Type(), err.Error())
+			}
 			if err := enc.encode(rv.Field(i)); err != nil {
-				panic(err)
+				return fmt.Errorf("while enoding struct %v: %s", rv.Type(), err.Error())
 			}
 		}
 	}
@@ -453,12 +413,15 @@ func (enc *Encoder) encodeStruct(rv reflect.Value, array ...bool) {
 		info, _ = calculateInfoFromIntLength(exportedFields)
 	}
 	if err := enc.composer.composeInformation(cborDataMap, info); err != nil {
-		panic(err)
+		return fmt.Errorf("while enoding struct %v: %s", rv.Type(), err.Error())
 	}
 	if _, err := enc.composer.write(buf.Bytes()); err != nil {
-		panic(err)
+		return fmt.Errorf("while enoding struct %v: %s", rv.Type(), err.Error())
 	}
+	return nil
 }
+
+func (enc *Encoder) encodeInterface(rv reflect.Value) error { return enc.encode(rv.Elem()) }
 
 // helper function that calculates the size
 // of the info byte depending on the given length

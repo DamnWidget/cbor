@@ -22,7 +22,7 @@ import (
 
 func TestWrite(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
-	c := NewComposer(buf)
+	c := newComposer(buf)
 	n, err := c.write([]byte{absoluteArray})
 	check(err)
 	expect(n, 1, t, "TestWrite")
@@ -38,7 +38,7 @@ func TestWrite(t *testing.T) {
 
 func TestComposeInt(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
-	c := NewComposer(buf)
+	c := newComposer(buf)
 	var i int64 = 1936
 	n, err := c.composeInt(i)
 	check(err)
@@ -72,7 +72,7 @@ func TestComposeInt(t *testing.T) {
 
 func TestComposeUint(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
-	c := NewComposer(buf)
+	c := newComposer(buf)
 	var i uint64 = 67524
 	n, err := c.composeUint(i)
 	check(err)
@@ -93,7 +93,7 @@ func TestComposeUint(t *testing.T) {
 
 func TestComposeBoolean(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
-	c := NewComposer(buf)
+	c := newComposer(buf)
 	var v bool = false
 	check(c.composeBoolean(v))
 	expect(buf.Bytes()[0], byte(0xf4), t, "TestComposeBoolean")

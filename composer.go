@@ -21,24 +21,36 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"mime"
+	"regexp"
 	"time"
 	"unsafe"
 )
 
 // Composes a 'data item'
-type Composer struct {
+type composer struct {
 	header     byte
 	w          io.Writer
 	indefinite bool
+	canonical  bool
+	strict     bool
 }
 
-// Create a new Composer with the given
+// Create a new composer with the given
 // io.Writer and returns back it's address
-func NewComposer(w io.Writer) *Composer {
-	return &Composer{w: w}
+func newComposer(w io.Writer) *composer {
+	return &composer{w: w}
 }
 
-func (c *Composer) composeInformation(major Major, info byte) error {
+func (c *composer) isCanonical() bool {
+	return c.canonical
+}
+
+func (c *composer) isStrict() bool {
+	return c.strict
+}
+
+func (c *composer) composeInformation(major Major, info byte) error {
 	c.header = (byte(major) << 5) | info
 	if _, err := c.w.Write([]byte{c.header}); err != nil {
 		return fmt.Errorf("while composing inforamtion byte: %s", err)
@@ -48,7 +60,7 @@ func (c *Composer) composeInformation(major Major, info byte) error {
 
 // Write bytes into the io.Writer, returns the
 // number of bytes written and an error in case of any
-func (c *Composer) write(buf []byte) (n int, err error) {
+func (c *composer) write(buf []byte) (n int, err error) {
 	if len(buf) == 0 || buf == nil {
 		return 0, nil
 	}
@@ -64,7 +76,7 @@ func (c *Composer) write(buf []byte) (n int, err error) {
 }
 
 // Writes a single byte into the io.Writer
-func (c *Composer) write1(b byte) error {
+func (c *composer) write1(b byte) error {
 	if _, err := c.write([]byte{b}); err != nil {
 		return err
 	}
@@ -73,7 +85,7 @@ func (c *Composer) write1(b byte) error {
 
 // Write a single byte into the io.Writer
 // as an encoded CBOR Null value
-func (c *Composer) composeNil() error {
+func (c *composer) composeNil() error {
 	if err := c.write1(absoluteNil); err != nil {
 		return fmt.Errorf("while writting nil value: %s", err.Error())
 	}
@@ -81,7 +93,7 @@ func (c *Composer) composeNil() error {
 }
 
 // Handle unsigned integers writing
-func (c *Composer) composeUint(i uint64, infoType ...Major) (n int, err error) {
+func (c *composer) composeUint(i uint64, infoType ...Major) (n int, err error) {
 	var t Major = cborUnsignedInt
 	if len(infoType) > 0 {
 		t = infoType[0]
@@ -114,13 +126,13 @@ func (c *Composer) composeUint(i uint64, infoType ...Major) (n int, err error) {
 		if err := c.composeInformation(t, cborUint64); err != nil {
 			return 0, err
 		}
-		return c.composeUin64(i)
+		return c.composeUint64(i)
 	}
 	return 0, fmt.Errorf("totally unexpected error, Uint size is unknown %v!", i)
 }
 
 // Handle signed integers writing
-func (c *Composer) composeInt(i int64) (n int, err error) {
+func (c *composer) composeInt(i int64) (n int, err error) {
 	if i < 0 {
 		return c.composeUint(uint64(^i), cborNegativeInt)
 	}
@@ -129,7 +141,7 @@ func (c *Composer) composeInt(i int64) (n int, err error) {
 
 // Write a single byte into the io.Writer
 // as an encoded CBOR unsigned int of 8 bits
-func (c *Composer) composeUint8(i uint8) (int, error) {
+func (c *composer) composeUint8(i uint8) (int, error) {
 	if i < 24 {
 		return 0, NewCanonicalModeError(fmt.Sprintf("%d must be send in a single byte 0x%x\n", i, i))
 	}
@@ -141,7 +153,7 @@ func (c *Composer) composeUint8(i uint8) (int, error) {
 
 // Write two bytes into the io.Writer
 // as an encoded CBOR unsigned int of 16 bits
-func (c *Composer) composeUint16(i uint16) (int, error) {
+func (c *composer) composeUint16(i uint16) (int, error) {
 	buf := []byte{byte(i >> 8), byte(i)}
 	if _, err := c.write(buf); err != nil {
 		return 0, err
@@ -151,7 +163,7 @@ func (c *Composer) composeUint16(i uint16) (int, error) {
 
 // Write two bytes into the io.Writer
 // as an encoded CBOR unsigned int of 32 bits
-func (c *Composer) composeUint32(i uint32) (int, error) {
+func (c *composer) composeUint32(i uint32) (int, error) {
 	buf := []byte{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)}
 	if _, err := c.write(buf); err != nil {
 		return 0, err
@@ -161,7 +173,7 @@ func (c *Composer) composeUint32(i uint32) (int, error) {
 
 // Write two bytes into the io.Writer
 // as an encoded CBOR unsigned int of 64 bits
-func (c *Composer) composeUin64(i uint64) (int, error) {
+func (c *composer) composeUint64(i uint64) (int, error) {
 	buf := []byte{
 		byte(i >> 56), byte(i >> 48), byte(i >> 40), byte(i >> 32),
 		byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i),
@@ -174,7 +186,7 @@ func (c *Composer) composeUin64(i uint64) (int, error) {
 
 // Write one byte into the io.Writer
 // as an encoded CBOR boolean value
-func (c *Composer) composeBoolean(v bool) error {
+func (c *composer) composeBoolean(v bool) error {
 	b := absoluteFalse
 	if v {
 		b = absoluteTrue
@@ -187,7 +199,7 @@ func (c *Composer) composeBoolean(v bool) error {
 
 // Write two bytes into the io.Writer
 // as an encoded CBOR float16
-func (c *Composer) composeFloat16(f float16) error {
+func (c *composer) composeFloat16(f float16) error {
 	if err := c.write1(absoluteFloat16); err != nil {
 		return err
 	}
@@ -201,7 +213,7 @@ func (c *Composer) composeFloat16(f float16) error {
 
 // Write four bytes into the io.Writer
 // as an encoded CBOR float32
-func (c *Composer) composeFloat32(f float32) error {
+func (c *composer) composeFloat32(f float32) error {
 	if err := c.write1(absoluteFloat32); err != nil {
 		return err
 	}
@@ -215,7 +227,7 @@ func (c *Composer) composeFloat32(f float32) error {
 
 // Write eight bytes into the io.Writer
 // as an encoded CBOR float64
-func (c *Composer) composeFloat64(f float64) error {
+func (c *composer) composeFloat64(f float64) error {
 	if err := c.write1(absoluteFloat64); err != nil {
 		return err
 	}
@@ -232,33 +244,36 @@ func (c *Composer) composeFloat64(f float64) error {
 
 // Write len(b) + 1 bytes into the
 // io.Writer as a sequence of bytes
-func (c *Composer) composeBytes(b []byte, major ...Major) (err error) {
+func (c *composer) composeBytes(b []byte, major ...Major) (err error) {
+	var n int
 	m := cborByteString
 	if len(major) != 0 {
 		m = major[0]
 	}
-	l := uint(len(b))
-	if l <= 24 {
-		err = c.composeInformation(m, byte(l))
-	} else {
-		info, err := infoHelper(l)
-		if err != nil {
-			return err
-		}
-		err = c.composeInformation(m, info)
+	l := len(b)
+	if _, err = c.composeUint(*(*uint64)(unsafe.Pointer(&l)), m); err != nil {
+		return err
 	}
+	n, err = c.write(b)
 	if err != nil {
 		return err
 	}
-	if _, err := c.write(b); err != nil {
-		return err
+	if n != len(b) {
+		return fmt.Errorf("expected to write %d bytes, %d written", len(b), n)
 	}
 	return nil
 }
 
+// Write len(s) + 1 bytes into the
+// io.Writer as an UTF-8 string
+func (c *composer) composeString(s string) error {
+	// return c.composeBytes([]byte(s), cborTextString)
+	return c.composeBytes(*(*[]byte)(unsafe.Pointer(&s)), cborTextString)
+}
+
 // Write N bytes into the io.Writer
 // as an encoded CBOR positive big.Int
-func (c *Composer) composeBigUint(n big.Int) error {
+func (c *composer) composeBigUint(n *big.Int) error {
 	if err := c.write1(absolutePositiveBigNum); err != nil {
 		return err
 	}
@@ -267,7 +282,7 @@ func (c *Composer) composeBigUint(n big.Int) error {
 
 // Write N bytes into the io.Writer
 // as an encoded CBOR negative big.Int
-func (c *Composer) composeBigInt(n big.Int) error {
+func (c *composer) composeBigInt(n *big.Int) error {
 	if err := c.write1(absoluteNegativeBigNum); err != nil {
 		return err
 	}
@@ -278,7 +293,7 @@ func (c *Composer) composeBigInt(n big.Int) error {
 
 // Write N bytes into the io.Writer
 // as an encoded CBOR epoch-based datetime
-func (c *Composer) composeEpochDateTime(t time.Time) error {
+func (c *composer) composeEpochDateTime(t *time.Time) error {
 	if err := c.write1(absoluteEpochDateTime); err != nil {
 		return err
 	}
@@ -288,7 +303,7 @@ func (c *Composer) composeEpochDateTime(t time.Time) error {
 
 // Write N bytes into the io.Writer
 // as an encoded CBOR Big Float
-func (c *Composer) composeBigFloat(r big.Rat) error {
+func (c *composer) composeBigFloat(r *big.Rat) error {
 	if _, err := c.write([]byte{absoluteBigFloat, byte(0x82)}); err != nil {
 		return err
 	}
@@ -303,15 +318,33 @@ func (c *Composer) composeBigFloat(r big.Rat) error {
 	return nil
 }
 
-// Write len(s) + 1 bytes into the
-// io.Writer as an UTF-8 string
-func (c *Composer) composeString(s string) error {
-	return c.composeBytes([]byte(s), cborTextString)
+// Write len(r) bytes into the
+// io.Writer as an encoded CBOR regexp
+func (c *composer) composeRegexp(r *regexp.Regexp) error {
+	if err := c.composeInformation(cborTag, cborRegexp); err != nil {
+		return err
+	}
+	if err := c.composeString(r.String()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Write N bytes into the io.Writer
+// as an encoded CBOR MIME type
+func (c *composer) composeCBORMIME(m *CBORMIME) error {
+	if _, err := c.write([]byte{0xd8, 0x24}); err != nil {
+		return err
+	}
+	if err := c.composeString(mime.FormatMediaType(m.ContentType, m.Params)); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Write 5 bytes into the
 // io.Writer as a CBOR NaN value
-func (c *Composer) composeNaN() error {
+func (c *composer) composeNaN() error {
 	if _, err := c.write([]byte{0xfa, 0x7f, 0xc0, 0x00, 0x00}); err != nil {
 		return err
 	}
@@ -320,7 +353,7 @@ func (c *Composer) composeNaN() error {
 
 // Write 5 bytes into the
 // io.Writer as a CBOR Infinity value
-func (c *Composer) composeInfinity(neg ...bool) error {
+func (c *composer) composeInfinity(neg ...bool) error {
 	data := []byte{0xfa, 0x7f, 0x80, 0x00, 0x00}
 	if len(neg) > 0 && neg[0] {
 		data = []byte{0xfa, 0xff, 0x80, 0x00, 0x00}
@@ -333,7 +366,7 @@ func (c *Composer) composeInfinity(neg ...bool) error {
 
 // Write 9 bytes into the io.Writer as a
 // CBOR NaN value for double precission
-func (c *Composer) composeDoublePrecissionNaN() error {
+func (c *composer) composeDoublePrecissionNaN() error {
 	if _, err := c.write([]byte{0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}); err != nil {
 		return err
 	}
@@ -342,7 +375,7 @@ func (c *Composer) composeDoublePrecissionNaN() error {
 
 // Write 9 bytes into the io.Writer as a
 // CBOR Infinity value for double precission
-func (c *Composer) composeDoublePrecissionInfinity(neg ...bool) error {
+func (c *composer) composeDoublePrecissionInfinity(neg ...bool) error {
 	data := []byte{0xfb, 0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 	if len(neg) > 0 && neg[0] {
 		data = []byte{0xfb, 0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
@@ -355,7 +388,7 @@ func (c *Composer) composeDoublePrecissionInfinity(neg ...bool) error {
 
 // Write 3 bytes into the io.Writer
 // as a CBOR NaN canonicalized float16 vlaue
-func (c *Composer) composeCanonicalNaN() error {
+func (c *composer) composeCanonicalNaN() error {
 	if _, err := c.write([]byte{0xf9, 0x7e, 0x00}); err != nil {
 		return err
 	}
@@ -364,7 +397,7 @@ func (c *Composer) composeCanonicalNaN() error {
 
 // Write 3 bytes into the io.Writer
 // as a CBOR Infinity canonicalized float16 value
-func (c *Composer) composeCanonicalInfinity(neg ...bool) error {
+func (c *composer) composeCanonicalInfinity(neg ...bool) error {
 	data := []byte{0xf9, 0x7c, 0x00}
 	if len(neg) > 0 && neg[0] {
 		data = []byte{0xf9, 0xfc, 0x00}

@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -152,13 +153,19 @@ const (
 	MIME
 )
 
+type float16 float32
+
 // CBORMIME
 type CBORMIME struct {
 	ContentType string
 	Params      map[string]string
 }
 
-type float16 float32
+var bigNumType = reflect.TypeOf(big.Int{})
+var bigFloatType = reflect.TypeOf(big.Rat{})
+var epochTimeType = reflect.TypeOf(time.Time{})
+var float16Type = reflect.TypeOf(float16(1))
+var cborMimeType = reflect.TypeOf(CBORMIME{})
 
 // taken from OGRE 3D rendering engine
 func float16toUint32(yy uint16) (d uint32) {
